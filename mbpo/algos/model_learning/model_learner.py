@@ -185,7 +185,7 @@ class ModelLearner(Agent):
         elites = jnp.argsort(losses.mean(0), axis=0)[: self._n_elites]
         self._elites = elites
 
-    def update_model(self, dataset: Dataset, batch_size: int, max_iters: int | None = 10):
+    def update_model(self, dataset: Dataset, batch_size: int, max_iters: int | None = 200):
         train_dataset, val_dataset = dataset.split(0.8)
         val_losses = []
         update = True
@@ -205,7 +205,7 @@ class ModelLearner(Agent):
                 or val_losses[-1] > jnp.array(val_losses[-10:]).mean()
             )
             print(f"Epoch {iters} val loss: {epoch_val_loss}")
-            if max_iters is not None and iters == 10:
+            if max_iters is not None and iters == max_iters:
                 break 
         info["iters"] = iters
         self.compute_elites(val_dataset, batch_size)
