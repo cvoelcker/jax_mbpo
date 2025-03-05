@@ -17,14 +17,14 @@ def update_model(
     next_state = batch["next_observations"]
     reward = batch["rewards"][..., jnp.newaxis]
     next_state = jnp.concatenate([next_state, reward], axis=-1)
-    mask = batch["masks"][..., jnp.newaxis]
+    mask = batch["masks"]
 
     def model_loss_fn(model_params: Params) -> Tuple[jnp.ndarray, Dict[str, float]]:
         pred_state_dist = model.apply_fn(
             {"params": model_params}, state, action
         )
         state_loss = -(
-            mask[:, jnp.newaxis, :]
+            mask[:, jnp.newaxis]
             * pred_state_dist.log_prob(next_state[:, jnp.newaxis, :])
         ).mean()
 
@@ -55,7 +55,8 @@ def per_ensemble_loss(
     action = batch["actions"]
     next_state = batch["next_observations"]
     reward = batch["rewards"][..., jnp.newaxis]
+    mask = batch["masks"]
     next_state = jnp.concatenate([next_state, reward], axis=-1)
     pred_state_dist = model.apply_fn({"params": model.params}, state, action)
-    state_loss = jnp.mean(pred_state_dist.log_prob(next_state[:, jnp.newaxis, :]), (0))
+    state_loss = -jnp.mean(mask[:, jnp.newaxis] * pred_state_dist.log_prob(next_state[:, jnp.newaxis, :]), (0))
     return state_loss
