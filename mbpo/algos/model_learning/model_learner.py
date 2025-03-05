@@ -71,17 +71,17 @@ def compute_model_based_batch(
         ) = jax.random.split(rng, 4)
         action_dist = policy.apply_fn({"params": policy.params}, state)
         action = action_dist.sample(seed=action_rng)
-        state_ensemble_dist, reward_ensemble = model.apply_fn(
+        state_ensemble_dist  = model.apply_fn(
             {"params": model.params}, state, action
         )
         state_ensemble = state_ensemble_dist.sample(seed=state_rng)
         _elite_idx = jax.random.randint(elite_rng, (bs,), 0, n_elites)
         elite_idxs = elites[_elite_idx]
         state = jnp.take_along_axis(
-            state_ensemble, elite_idxs[:, None, None], axis=-2
+            state_ensemble[..., :-1], elite_idxs[:, None, None], axis=-2
         ).squeeze(-2)
         reward = jnp.take_along_axis(
-            reward_ensemble, elite_idxs[:, None, None], axis=-2
+            state_ensemble[..., -1:], elite_idxs[:, None, None], axis=-2
         ).squeeze(-2)
         done = terminal_fn(state)
         _states.append(state)
