@@ -64,8 +64,8 @@ def main(cfg):
 
         if i >= cfg.start_training:
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
-                infos = model.update_model(replay_buffer, cfg.batch_size)
-                for k,v in infos[-1].items():
+                info = model.update_model(replay_buffer, cfg.batch_size)
+                for k,v in info.items():
                     wandb.log({f"training/model/{k}": v}, step=i)
 
             model_dataset = model.yield_data(

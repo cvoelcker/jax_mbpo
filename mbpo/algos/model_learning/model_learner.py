@@ -188,7 +188,6 @@ class ModelLearner(Agent):
     def update_model(self, dataset: Dataset, batch_size: int, max_iters: int | None = 10):
         train_dataset, val_dataset = dataset.split(0.8)
         val_losses = []
-        infos = []
         update = True
         iters = 0
         while update:
@@ -197,7 +196,6 @@ class ModelLearner(Agent):
             for batch in train_dataset.get_epoch_iter(batch_size):
                 info = self.update_step(batch)
                 batch_infos.append(info)
-            infos.append(jax.tree_util.tree_map(lambda *x: sum(x), *batch_infos))
             epoch_val_loss = 0.0
             for batch in val_dataset.get_epoch_iter(batch_size):
                 epoch_val_loss += compute_loss(self._model, batch)
@@ -209,5 +207,6 @@ class ModelLearner(Agent):
             print(f"Epoch {iters} val loss: {epoch_val_loss}")
             if max_iters is not None and iters == 10:
                 break 
+        info["iters"] = iters
         self.compute_elites(val_dataset, batch_size)
-        return infos, val_losses
+        return info, val_losses
