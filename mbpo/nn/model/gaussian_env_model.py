@@ -7,38 +7,6 @@ import jax.numpy as jnp
 from mbpo.nn.mlp import MLP
 
 
-class GaussianEnvModel(nn.Module):
-    hidden_dims: Sequence[int]
-    output_dim: int
-    dropout_rate: Optional[float] = None
-    log_std_min: Optional[float] = -20
-    log_std_max: Optional[float] = 2
-    low: Optional[jnp.ndarray] = None
-    high: Optional[jnp.ndarray] = None
-
-    @nn.compact
-    def __call__(
-        self, observations: jnp.ndarray, action: jnp.ndarray, training: bool = False
-    ) -> distrax.Distribution:
-        state = jnp.concatenate([observations, action], axis=-1)
-        outputs = MLP(
-            self.hidden_dims, activate_final=False, dropout_rate=self.dropout_rate
-        )(state, training=training)
-
-        means_and_rewards = nn.Dense(self.output_dim + 1)(outputs)
-        means = means_and_rewards[..., :-1]
-        rewards = means_and_rewards[..., -1:]
-
-        log_stds = nn.Dense(self.output_dim)(outputs)
-
-        log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
-
-        return (
-            distrax.MultivariateNormalDiag(loc=means, scale_diag=jnp.exp(log_stds)),
-            rewards,
-        )
-
-
 class GaussianEnsembleModel(nn.Module):
     hidden_dims: Sequence[int]
     num_ensemble: int
@@ -71,14 +39,9 @@ class GaussianEnsembleModel(nn.Module):
         )
 
         means_and_rewards = nn.Dense(self.output_dim + 1)(outputs)
-        means = means_and_rewards[..., :-1]
-        rewards = means_and_rewards[..., -1:]
 
-        log_stds = nn.Dense(self.output_dim)(outputs)
+        log_stds = nn.Dense(self.output_dim + 1)(outputs)
 
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
-        return (
-            distrax.MultivariateNormalDiag(loc=means, scale_diag=jnp.exp(log_stds)),
-            rewards,
-        )
+        return distrax.MultivariateNormalDiag(loc=means_and_rewards, scale_diag=jnp.exp(log_stds))
