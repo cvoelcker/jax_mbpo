@@ -64,7 +64,9 @@ def main(cfg):
 
         if i >= cfg.start_training:
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
-                model.update_model(replay_buffer, cfg.batch_size)
+                infos = model.update_model(replay_buffer, cfg.batch_size)
+                for k,v in infos[-1].items():
+                    wandb.log({f"training/model/{k}": v}, step=i)
 
             model_dataset = model.yield_data(
                 replay_buffer, agent, cfg.batch_size, cfg.policy_steps
@@ -74,7 +76,7 @@ def main(cfg):
 
             if i % cfg.log_interval == 0:
                 for k, v in update_info.items():
-                    wandb.log({f"training/{k}": v}, step=i)
+                    wandb.log({f"training/critic/{k}": v}, step=i)
 
         if i % cfg.eval_interval == 0:
             eval_info = evaluate(agent, eval_env, num_episodes=cfg.eval_episodes)
