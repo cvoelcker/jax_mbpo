@@ -58,7 +58,7 @@ def main(cfg):
         )
         observation = next_observation
 
-        if done:
+        if truncated or terminated:
             (observation, _), done = env.reset(), False
             for k, v in info["episode"].items():
                 decode = {"r": "return", "l": "length", "t": "time"}
@@ -76,10 +76,10 @@ def main(cfg):
                 cfg.batch_size,
                 cfg.policy_steps,
                 termination_fn=lookup_termination_fn(cfg.env_name),
-                depth=compute_schedule(cfg.depth_schedule, i//1000)
+                depth=compute_schedule(*cfg.algo_kwargs.depth_schedule, i//1000)
             )
             for batch in model_dataset:
-                # batch = replay_buffer.sample(cfg.batch_size)
+                batch = replay_buffer.sample(cfg.batch_size)
                 update_info = agent.update(batch)
 
             if i % cfg.log_interval == 0:
