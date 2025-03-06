@@ -76,6 +76,7 @@ def main(cfg):
                 cfg.batch_size,
                 cfg.policy_steps,
                 termination_fn=lookup_termination_fn(cfg.env_name),
+                depth=compute_schedule(cfg.depth_schedule, i//1000)
             )
             for batch in model_dataset:
                 # batch = replay_buffer.sample(cfg.batch_size)
@@ -89,6 +90,14 @@ def main(cfg):
             eval_info = evaluate(agent, eval_env, num_episodes=cfg.eval_episodes)
             for k, v in eval_info.items():
                 wandb.log({f"evaluation/{k}": v}, step=i)
+
+
+def compute_schedule(init_epoch, end_epoch, init_value, end_value, epoch):
+    if epoch < init_epoch:
+        return init_value
+    if epoch > end_epoch:
+        return end_value
+    return int(init_value + (end_value - init_value) * (epoch - init_epoch) / (end_epoch - init_epoch))
 
 
 if __name__ == "__main__":
