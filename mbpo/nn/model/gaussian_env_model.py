@@ -12,7 +12,7 @@ class GaussianEnsembleModel(nn.Module):
     num_ensemble: int
     output_dim: int
     dropout_rate: Optional[float] = None
-    log_std_min: Optional[float] = -20
+    log_std_min: Optional[float] = -10
     log_std_max: Optional[float] = 2
     low: Optional[jnp.ndarray] = None
     high: Optional[jnp.ndarray] = None
@@ -44,4 +44,6 @@ class GaussianEnsembleModel(nn.Module):
 
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
-        return distrax.MultivariateNormalDiag(loc=means_and_rewards, scale_diag=jnp.exp(log_stds))
+        return distrax.MultivariateNormalDiag(
+            loc=means_and_rewards, scale_diag=jnp.exp(log_stds)
+        )

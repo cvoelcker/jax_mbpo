@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env pythonA
 import gymnasium as gym
 import tqdm
 import wandb
@@ -10,7 +10,7 @@ from mbpo.algos.sac import SACLearner
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
 
-from mbpo.utils.termination_fns import lookup_termination_fn
+from mbpo.env_utils.termination_fns import lookup_termination_fn
 
 
 @hydra.main(config_path="../../config", config_name="main")
@@ -67,13 +67,18 @@ def main(cfg):
         if i >= cfg.start_training:
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
                 info = model.update_model(replay_buffer, cfg.batch_size)
-                for k,v in info.items():
+                for k, v in info.items():
                     wandb.log({f"training/model/{k}": v}, step=i)
 
             model_dataset = model.yield_data(
-                replay_buffer, agent, cfg.batch_size, cfg.policy_steps, termination_fn=lookup_termination_fn(cfg.env_name)
+                replay_buffer,
+                agent,
+                cfg.batch_size,
+                cfg.policy_steps,
+                termination_fn=lookup_termination_fn(cfg.env_name),
             )
             for batch in model_dataset:
+                # batch = replay_buffer.sample(cfg.batch_size)
                 update_info = agent.update(batch)
 
             if i % cfg.log_interval == 0:

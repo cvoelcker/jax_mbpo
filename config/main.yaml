@@ -1,4 +1,4 @@
-env_name: HalfCheetah-v4
+env_name: Hopper-v4
 save_dir: ./tmp/
 seed: 42
 eval_episodes: 10

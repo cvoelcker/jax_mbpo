@@ -26,11 +26,11 @@ def _update_jit(
 ) -> Tuple[TrainState, Dict[str, float]]:
     return update_model(model, batch)
 
+
 @jax.jit
-def compute_loss(
-    model: TrainState, batch: FrozenDict
-) -> tuple[jax.Array, jax.Array]:
+def compute_loss(model: TrainState, batch: FrozenDict) -> tuple[jax.Array, jax.Array]:
     return per_ensemble_loss(model, batch).mean()
+
 
 @jax.jit
 def compute_per_ensemble_loss(
@@ -71,9 +71,7 @@ def compute_model_based_batch(
         ) = jax.random.split(rng, 4)
         action_dist = policy.apply_fn({"params": policy.params}, state)
         action = action_dist.sample(seed=action_rng)
-        state_ensemble_dist  = model.apply_fn(
-            {"params": model.params}, state, action
-        )
+        state_ensemble_dist = model.apply_fn({"params": model.params}, state, action)
         state_ensemble = state_ensemble_dist.sample(seed=state_rng)
         _elite_idx = jax.random.randint(elite_rng, (bs,), 0, n_elites)
         elite_idxs = elites[_elite_idx]
@@ -103,7 +101,7 @@ def compute_model_based_batch(
     rewards = jnp.take_along_axis(rewards, idxs, axis=0).squeeze(0)
     dones = jnp.take_along_axis(dones, idxs, axis=0).squeeze(0)
 
-    return frozen_dict.freeze(
+    new_batch = frozen_dict.freeze(
         dict(
             observations=states,
             actions=actions,
@@ -111,7 +109,10 @@ def compute_model_based_batch(
             rewards=rewards.squeeze(),
             masks=1.0 - dones.squeeze(),
         )
-    ), rng
+    )
+    # for k, v in new_batch.items():
+    #    jax.debug.print("{}, {}", k, v.shape == batch[k].shape)
+    return new_batch, rng
 
 
 class ModelLearner(Agent):
@@ -149,14 +150,12 @@ class ModelLearner(Agent):
         )
 
         self._model = model
+        self._models = []
         self._rng = rng
         self._elites = jnp.arange(n_elites)
 
     def update_step(self, batch: FrozenDict) -> Dict[str, float]:
-        (
-            new_model,
-            info,
-        ) = _update_jit(
+        (new_model, info,) = _update_jit(
             self._model,
             batch,
         )
@@ -166,12 +165,24 @@ class ModelLearner(Agent):
         return info
 
     def yield_data(
-        self, dataset: Dataset, policy: SACLearner, batch_size: int, num_samples: int, depth = 1, termination_fn= lambda x: jnp.zeros_like(x[:, :1])
+        self,
+        dataset: Dataset,
+        policy: SACLearner,
+        batch_size: int,
+        num_samples: int,
+        depth=1,
+        termination_fn=lambda x: jnp.zeros_like(x[:, :1]),
     ):
         for _ in range(num_samples):
             batch = dataset.sample(batch_size)
             batch, rng = compute_model_based_batch(
-                self._rng, self._model, policy._actor, batch, depth, termination_fn, self._elites
+                self._rng,
+                self._model,
+                policy._actor,
+                batch,
+                depth,
+                termination_fn,
+                self._elites,
             )
             self._rng = rng
             yield batch
@@ -182,31 +193,53 @@ class ModelLearner(Agent):
             loss = compute_per_ensemble_loss(self._model, batch)
             _losses.append(loss)
         losses = jnp.stack(_losses, axis=0)
-        elites = jnp.argsort(losses.mean(0), axis=0)[: self._n_elites]
+        elites = jnp.argsort(losses.mean(0), axis=0, descending=True)[: self._n_elites]
         self._elites = elites
+        return losses[self._elites]
 
-    def update_model(self, dataset: Dataset, batch_size: int, max_iters: int | None = 200):
+    def set_best_model(self, losses):
+        idx = jnp.argmax(jnp.array(losses))
+        self._model = self._models[idx]
+        self._models = []
+        return losses[idx]
+
+    def update_model(
+        self,
+        dataset: Dataset,
+        batch_size: int,
+        max_iters: int | None = None,
+        patience: int = 10,
+    ):
         train_dataset, val_dataset = dataset.split(0.8)
         val_losses = []
         update = True
         iters = 0
+        best = jnp.finfo(jnp.float32).min
+        best_iter = 0
         while update:
             iters += 1
             batch_infos = []
             for batch in train_dataset.get_epoch_iter(batch_size):
                 info = self.update_step(batch)
                 batch_infos.append(info)
+            self._models.append(self._model)
             epoch_val_loss = 0.0
+            val_iters = 0.0
             for batch in val_dataset.get_epoch_iter(batch_size):
-                epoch_val_loss += compute_loss(self._model, batch)
+                _val_loss = compute_loss(self._model, batch)
+                _val_loss = jnp.nan_to_num(_val_loss)
+                epoch_val_loss += _val_loss
+                val_iters += 1
+            epoch_val_loss /= val_iters
             val_losses.append(epoch_val_loss)
-            update = (
-                len(val_losses) < 10
-                or val_losses[-1] > jnp.array(val_losses[-10:]).mean()
-            )
+            best = jnp.maximum(best, epoch_val_loss)
+            best_iter = iters if epoch_val_loss == best else best_iter
+            update = len(val_losses) < 10 or iters - best_iter < 10
             print(f"Epoch {iters} val loss: {epoch_val_loss}")
             if max_iters is not None and iters == max_iters:
-                break 
+                break
         info["iters"] = iters
-        self.compute_elites(val_dataset, batch_size)
-        return info, val_losses
+        info["val_loss"] = epoch_val_loss
+        info["best_val_loss"] = self.set_best_model(val_losses)
+        info["elite_loss"] = self.compute_elites(val_dataset, batch_size)
+        return info

@@ -27,6 +27,7 @@ class MLP(nn.Module):
             x = nn.Dense(size)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
+                x = nn.LayerNorm()(x)
                 x = self.activations(x)
                 if self.dropout_rate is not None and self.dropout_rate > 0:
                     x = nn.Dropout(rate=self.dropout_rate)(

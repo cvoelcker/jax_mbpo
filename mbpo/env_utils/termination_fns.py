@@ -7,6 +7,7 @@ import math
 import jax
 import jax.numpy as jnp
 
+
 def hopper(next_obs: jax.Array) -> jax.Array:
     height = next_obs[:, 0]
     angle = next_obs[:, 1]
