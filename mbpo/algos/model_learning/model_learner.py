@@ -166,12 +166,12 @@ class ModelLearner(Agent):
         return info
 
     def yield_data(
-        self, dataset: Dataset, policy: SACLearner, batch_size: int, num_samples: int, depth = 1, terminal_fn= lambda x: jnp.zeros_like(x[:, :1])
+        self, dataset: Dataset, policy: SACLearner, batch_size: int, num_samples: int, depth = 1, termination_fn= lambda x: jnp.zeros_like(x[:, :1])
     ):
         for _ in range(num_samples):
             batch = dataset.sample(batch_size)
             batch, rng = compute_model_based_batch(
-                self._rng, self._model, policy._actor, batch, depth, terminal_fn, self._elites
+                self._rng, self._model, policy._actor, batch, depth, termination_fn, self._elites
             )
             self._rng = rng
             yield batch

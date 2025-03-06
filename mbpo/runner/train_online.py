@@ -10,6 +10,8 @@ from mbpo.algos.sac import SACLearner
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
 
+from mbpo.utils.termination_fns import lookup_termination_fn
+
 
 @hydra.main(config_path="../../config", config_name="main")
 def main(cfg):
@@ -69,7 +71,7 @@ def main(cfg):
                     wandb.log({f"training/model/{k}": v}, step=i)
 
             model_dataset = model.yield_data(
-                replay_buffer, agent, cfg.batch_size, cfg.policy_steps
+                replay_buffer, agent, cfg.batch_size, cfg.policy_steps, termination_fn=lookup_termination_fn(cfg.env_name)
             )
             for batch in model_dataset:
                 update_info = agent.update(batch)
