@@ -122,7 +122,7 @@ class ModelLearner(Agent):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_lr: float = 3e-4,
-        hidden_dims: Sequence[int] = (256, 256),
+        model_hidden_dims: Sequence[int] = (256, 256),
         n_ensemble: int = 8,
         n_elites: int = 5,
         **kwargs,
@@ -140,7 +140,7 @@ class ModelLearner(Agent):
         rng, model_key = jax.random.split(rng)
 
         model_def = GaussianEnsembleModel(
-            hidden_dims, num_ensemble=n_ensemble, output_dim=observations.shape[-1]
+            model_hidden_dims, num_ensemble=n_ensemble, output_dim=observations.shape[-1]
         )
         actor_params = model_def.init(model_key, observations, actions)["params"]
         model = TrainState.create(
