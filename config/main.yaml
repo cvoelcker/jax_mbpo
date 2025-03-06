@@ -18,7 +18,9 @@ algo_kwargs:
   critic_lr: 3e-4
   temp_lr: 3e-4
   model_lr: 3e-4
-  hidden_dims: [256, 256]
+  critic_hidden_dims: [512, 512]
+  actor_hidden_dims: [256, 256]
+  model_hidden_dims: [200, 200, 200, 200]
   discount: 0.99
   tau: 0.005
   target_entropy: 
