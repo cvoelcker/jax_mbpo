@@ -4,7 +4,7 @@ import distrax
 import flax.linen as nn
 import jax.numpy as jnp
 
-from mbpo.nn.mlp import MLP
+from mbpo.nn.mlp import MLP, l2_normalization_activation
 
 
 class TanhMultivariateNormalDiag(distrax.Transformed):
@@ -57,6 +57,7 @@ class NormalTanhPolicy(nn.Module):
     log_std_max: Optional[float] = 2
     low: Optional[jnp.ndarray] = None
     high: Optional[jnp.ndarray] = None
+    add_weight_norm: bool = False
 
     @nn.compact
     def __call__(
@@ -65,6 +66,9 @@ class NormalTanhPolicy(nn.Module):
         outputs = MLP(
             self.hidden_dims, activate_final=True, dropout_rate=self.dropout_rate
         )(observations, training=training)
+
+        if self.add_weight_norm:
+            outputs = l2_normalization_activation(outputs)
 
         means = nn.Dense(self.action_dim)(outputs)
 

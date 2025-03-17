@@ -22,7 +22,9 @@ from mbpo.types import Params, PRNGKey
 from mbpo.utils.target_update import soft_target_update
 
 
-@functools.partial(jax.jit, static_argnames=("backup_entropy", "critic_reduction"))
+@functools.partial(
+    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target")
+)
 def _update_jit(
     rng: PRNGKey,
     actor: TrainState,
@@ -35,6 +37,7 @@ def _update_jit(
     target_entropy: float,
     backup_entropy: bool,
     critic_reduction: str,
+    update_target: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
 
     rng, key = jax.random.split(rng)
@@ -50,9 +53,12 @@ def _update_jit(
         backup_entropy=backup_entropy,
         critic_reduction=critic_reduction,
     )
-    new_target_critic_params = soft_target_update(
-        new_critic.params, target_critic_params, tau
-    )
+    if update_target:
+        new_target_critic_params = soft_target_update(
+            new_critic.params, target_critic_params, tau
+        )
+    else:
+        new_target_critic_params = target_critic_params
 
     rng, key = jax.random.split(rng)
     new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch)
@@ -86,6 +92,9 @@ class SACLearner(Agent):
         backup_entropy: bool = True,
         critic_reduction: str = "min",
         init_temperature: float = 1.0,
+        target_update_interval: int = 1,
+        critic_weight_norm: bool = False,
+        actor_weight_norm: bool = False,
         **kwargs,
     ):
         """
@@ -118,7 +127,13 @@ class SACLearner(Agent):
             low = action_space.low
             high = action_space.high
 
-        actor_def = NormalTanhPolicy(hidden_dims, action_dim, low=low, high=high)
+        actor_def = NormalTanhPolicy(
+            hidden_dims,
+            action_dim,
+            low=low,
+            high=high,
+            add_weight_norm=actor_weight_norm,
+        )
         actor_params = actor_def.init(actor_key, observations)["params"]
         actor = TrainState.create(
             apply_fn=actor_def.apply,
@@ -126,7 +141,9 @@ class SACLearner(Agent):
             tx=optax.adam(learning_rate=actor_lr),
         )
 
-        critic_def = StateActionEnsemble(hidden_dims, num_qs=2)
+        critic_def = StateActionEnsemble(
+            hidden_dims, num_qs=2, add_weight_norm=critic_weight_norm
+        )
         critic_params = critic_def.init(critic_key, observations, actions)["params"]
         critic = TrainState.create(
             apply_fn=critic_def.apply,
@@ -143,13 +160,15 @@ class SACLearner(Agent):
             tx=optax.adam(learning_rate=temp_lr),
         )
 
+        self.target_update_interval = target_update_interval
+
         self._actor = actor
         self._critic = critic
         self._target_critic_params = target_critic_params
         self._temp = temp
         self._rng = rng
 
-    def update(self, batch: FrozenDict) -> Dict[str, float]:
+    def update(self, batch: FrozenDict, step) -> Dict[str, float]:
         (
             new_rng,
             new_actor,
@@ -169,6 +188,7 @@ class SACLearner(Agent):
             self.target_entropy,
             self.backup_entropy,
             self.critic_reduction,
+            step % self.target_update_interval == 0,
         )
 
         self._rng = new_rng

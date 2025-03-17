@@ -78,12 +78,14 @@ class Dataset(object):
         batch_size: int,
         keys: Optional[Iterable[str]] = None,
         indx: Optional[np.ndarray] = None,
+        max_idx: Optional[int] = None,
     ) -> frozen_dict.FrozenDict:
         if indx is None:
+            max_idx = min(max_idx, len(self)) if max_idx is not None else len(self)
             if hasattr(self.np_random, "integers"):
-                indx = self.np_random.integers(len(self), size=batch_size)
+                indx = self.np_random.integers(max_idx, size=batch_size)
             else:
-                indx = self.np_random.randint(len(self), size=batch_size)
+                indx = self.np_random.randint(max_idx, size=batch_size)
 
         batch = dict()
 
@@ -102,7 +104,7 @@ class Dataset(object):
         total_len = len(self)
         num_batches = total_len // batch_size
         random_idxs = np.random.permutation(total_len)
-        for i in range(num_batches + 1):
+        for i in range(num_batches):
             idxs = random_idxs[i * batch_size : (i + 1) * batch_size]
             yield self.sample(batch_size, indx=idxs)
 

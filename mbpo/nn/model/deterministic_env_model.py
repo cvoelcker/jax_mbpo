@@ -2,21 +2,30 @@ from typing import Optional, Sequence
 
 import distrax
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 
 from mbpo.nn.mlp import MLP
 
 
-class GaussianEnsembleModel(nn.Module):
+class MSEDeterministic(distrax.Deterministic):
+
+    def log_prob(self, x: jax.Array) -> jax.Array:
+        return -jnp.square(self.loc - x).mean(axis=-1)
+
+    def weighted_log_prob(self, x: jax.Array, weights: jax.Array) -> jax.Array:
+        return -(jnp.square((self.loc - x) * weights)).mean(axis=-1)
+
+
+class DeterministicEnsembleModel(nn.Module):
     hidden_dims: Sequence[int]
     num_ensemble: int
     output_dim: int
     dropout_rate: Optional[float] = None
     log_std_min: Optional[float] = -10
-    log_std_max: Optional[float] = 0.5
+    log_std_max: Optional[float] = 2
     low: Optional[jnp.ndarray] = None
     high: Optional[jnp.ndarray] = None
-    add_weight_norm: bool = False
 
     @nn.compact
     def __call__(
@@ -38,12 +47,7 @@ class GaussianEnsembleModel(nn.Module):
             in_axes=(-2, None),
             out_axes=-2,
             axis_size=self.num_ensemble,
-        )(
-            self.hidden_dims,
-            activate_final=True,
-            dropout_rate=self.dropout_rate,
-            add_weight_norm=self.add_weight_norm,
-        )(
+        )(self.hidden_dims, activate_final=True, dropout_rate=self.dropout_rate)(
             state_inp, training
         )
 
@@ -53,12 +57,4 @@ class GaussianEnsembleModel(nn.Module):
 
         means_and_rewards = nn.Dense(self.output_dim + 1)(outputs) + state
 
-        logvar = nn.Dense(self.output_dim + 1)(outputs)
-
-        logvar = jnp.clip(logvar, self.log_std_min, self.log_std_max)
-        logvar = self.log_std_max - nn.softplus(self.log_std_max - logvar)
-        logvar = self.log_std_min + nn.softplus(logvar - self.log_std_min)
-
-        return distrax.MultivariateNormalDiag(
-            loc=means_and_rewards, scale_diag=jnp.sqrt(jnp.exp(logvar))
-        )
+        return MSEDeterministic(loc=means_and_rewards)

@@ -8,82 +8,85 @@ import jax
 import jax.numpy as jnp
 
 
-def hopper(next_obs: jax.Array) -> jax.Array:
-    height = next_obs[:, 0]
-    angle = next_obs[:, 1]
-    not_done = (
-        jnp.isfinite(next_obs).all(-1)
-        * (jnp.abs(next_obs[:, 1:]) < 100).all(-1)
-        * (height > 0.7)
-        * (jnp.abs(angle) < 0.2)
-    )
+def get_hopper(env):
+    z_range = env.unwrapped._healthy_z_range
+    angle_range = env.unwrapped._healthy_angle_range
+    state_range = env.unwrapped._healthy_state_range
 
-    done = ~not_done
-    done = done[:, None]
-    return done
+    @jax.jit
+    def term_fn(next_obs: jax.Array) -> jax.Array:
+        z = next_obs[:, 0]
+        angle = next_obs[:, 1]
+        state = next_obs[:, 2:]
 
+        healthy_z = (z > z_range[0]) * (z < z_range[1])
+        healthy_angle = (angle > angle_range[0]) * (angle < angle_range[1])
+        healthy_state = jax.lax.reduce_and(
+            (state > state_range[0]) * (state < state_range[1]), axes=[1]
+        )
 
-def cartpole(next_obs: jax.Array) -> jax.Array:
-    x, theta = next_obs[:, 0], next_obs[:, 2]
+        is_healthy = jnp.logical_and(
+            jnp.logical_and(healthy_z, healthy_angle), healthy_state
+        )
 
-    x_threshold = 2.4
-    theta_threshold_radians = 12 * 2 * math.pi / 360
-    not_done = (
-        (x > -x_threshold)
-        * (x < x_threshold)
-        * (theta > -theta_threshold_radians)
-        * (theta < theta_threshold_radians)
-    )
-    done = ~not_done
-    done = done[:, None]
-    return done
+        return jnp.logical_not(is_healthy)
+
+    return term_fn
 
 
-def inverted_pendulum(next_obs: jax.Array) -> jax.Array:
-    not_done = jnp.isfinite(next_obs).all(-1) * (jnp.abs(next_obs[:, 1]) <= 0.2)
-    done = ~not_done
+def no_termination(env):
+    def term_fn(next_obs: jax.Array):
+        return jnp.zeros_like(next_obs[:, 0])
 
-    done = done[:, None]
-
-    return done
+    return term_fn
 
 
-def no_termination(next_obs: jax.Array) -> jax.Array:
-    return jnp.zeros_like(next_obs[:, :1])
+def get_walker2d(env):
+    z_range = env.unwrapped._healthy_z_range
+    angle_range = env.unwrapped._healthy_angle_range
+
+    @jax.jit
+    def term_fn(next_obs: jax.Array) -> jax.Array:
+        z = next_obs[:, 0]
+        angle = next_obs[:, 1]
+
+        healthy_z = (z > z_range[0]) * (z < z_range[1])
+        healthy_angle = (angle > angle_range[0]) * (angle < angle_range[1])
+        is_healthy = jnp.logical_and(healthy_z, healthy_angle)
+
+        return jnp.logical_not(is_healthy)
+
+    return term_fn
 
 
-def walker2d(next_obs: jax.Array) -> jax.Array:
-    height = next_obs[:, 0]
-    angle = next_obs[:, 1]
-    not_done = (height > 0.8) * (height < 2.0) * (angle > -1.0) * (angle < 1.0)
-    done = ~not_done
-    done = done[:, None]
-    return done
+def get_ant(env):
+    z_range = env.unwrapped._healthy_z_range
+
+    @jax.jit
+    def term_fn(next_obs: jax.Array) -> jax.Array:
+        z = next_obs[:, 0]
+
+        healthy_z = (z > z_range[0]) * (z < z_range[1])
+
+        return jnp.logical_not(healthy_z)
 
 
-def ant(next_obs: jax.Array):
-    x = next_obs[:, 0]
-    not_done = jnp.isfinite(next_obs).all(-1) * (x >= 0.2) * (x <= 1.0)
+def get_humanoid(env):
+    z_range = env.unwrapped._healthy_z_range
 
-    done = ~not_done
-    done = done[:, None]
-    return done
+    @jax.jit
+    def term_fn(next_obs: jax.Array) -> jax.Array:
+        z = next_obs[:, 0]
 
+        healthy_z = (z > z_range[0]) * (z < z_range[1])
 
-def humanoid(next_obs: jax.Array):
-    z = next_obs[:, 0]
-    done = (z < 1.0) + (z > 2.0)
-
-    done = done[:, None]
-    return done
+        return jnp.logical_not(healthy_z)
 
 
-def lookup_termination_fn(env_name):
+def lookup_termination_fn(env_name, env):
     return {
-        "Hopper-v4": hopper,
-        "CartPole-v4": cartpole,
-        "InvertedPendulum-v4": inverted_pendulum,
-        "Walker2d-v4": walker2d,
-        "Ant-v4": ant,
-        "Humanoid-v4": humanoid,
-    }.get(env_name, no_termination)
+        "Hopper-v5": get_hopper,
+        "Walker2d-v5": get_walker2d,
+        "Ant-v5": get_ant,
+        "Humanoid-v5": get_humanoid,
+    }.get(env_name, no_termination)(env)

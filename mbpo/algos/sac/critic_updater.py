@@ -29,10 +29,8 @@ def update_critic(
     elif critic_reduction == "mean":
         next_q = next_qs.mean(axis=0)
     else:
-        raise NotImplemented()
-
+        raise NotImplementedError()
     target_q = batch["rewards"] + discount * batch["masks"] * next_q
-
     if backup_entropy:
         target_q -= (
             discount
@@ -45,7 +43,8 @@ def update_critic(
         qs = critic.apply_fn(
             {"params": critic_params}, batch["observations"], batch["actions"]
         )
-        critic_loss = ((qs - target_q) ** 2).mean()
+        critic_loss = (qs - target_q) ** 2
+        critic_loss = critic_loss.mean()
         return critic_loss, {
             "critic_loss": critic_loss,
             "q": qs.mean(),
