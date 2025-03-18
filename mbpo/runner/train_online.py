@@ -21,7 +21,7 @@ from mbpo.env_utils.termination_fns import lookup_termination_fn
 @hydra.main(config_path="../../config", config_name="main")
 def main(cfg):
     print(cfg)
-    wandb.init(project="mbpo_online")
+    wandb.init(**cfg.wandb_kwargs)
     wandb.config.update(OmegaConf.to_container(cfg=cfg))
 
     env = gym.make(cfg.env_name)
