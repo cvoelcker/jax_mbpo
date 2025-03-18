@@ -21,3 +21,10 @@ Simply follow the instructions.
 ## Running
 
 To run the experiment, you can simply execute `uv run mbp/runner/train_online.py`.
+
+## Roadmap
+
+- [ ] hydra submitit integration
+- [ ] saving and loading of models and interrupt training
+- [ ] modern SAC architectures
+- [ ] parallel multi-seed training
