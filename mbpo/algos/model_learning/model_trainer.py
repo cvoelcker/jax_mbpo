@@ -12,7 +12,7 @@ from flax.core import frozen_dict
 from flax.training.train_state import TrainState
 
 from mbpo.algos.agent import Agent
-from mbpo.algos.model_learning.model_updater import (
+from mbpo.algos.model_learning.model_update_step import (
     update_nll,
     per_ensemble_nll,
     per_ensemble_vagram,
@@ -20,7 +20,7 @@ from mbpo.algos.model_learning.model_updater import (
     update_vaml,
     update_vagram,
 )
-from mbpo.algos.sac.sac_learner import SACLearner
+from mbpo.algos.sac.sac_trainer import SACTrainer
 from mbpo.data.dataset import Dataset, DatasetDict
 from mbpo.nn.model.deterministic_env_model import DeterministicEnsembleModel
 from mbpo.nn.model.gaussian_env_model import GaussianEnsembleModel
@@ -33,6 +33,7 @@ def _update_jit(
     obs_mean: jax.Array,
     obs_std: jax.Array,
     critic: TrainState,
+    critic_target: TrainState,
     actor: TrainState,
     rng: jax.Array,
     mode: str = "nll",
@@ -45,11 +46,28 @@ def _update_jit(
     obs_mean = jnp.mean(model_inp, axis=0) * 0.0001 + obs_mean * 0.9999
     obs_std = jnp.std(model_inp, axis=0) * 0.0001 + obs_std * 0.9999
     if mode == "nll":
-        return *update_nll(model, batch, obs_mean, obs_std), obs_mean, obs_std, update_rng
+        return (
+            *update_nll(model, batch, obs_mean, obs_std),
+            obs_mean,
+            obs_std,
+            update_rng,
+        )
     elif mode == "vagram":
-        return *update_vagram(model, batch, obs_mean, obs_std, critic, actor, rng), obs_mean, obs_std, update_rng
+        return (
+            *update_vagram(
+                model, batch, obs_mean, obs_std, critic, critic_target, actor, rng
+            ),
+            obs_mean,
+            obs_std,
+            update_rng,
+        )
     elif mode == "vaml":
-        return *update_vaml(model, batch, obs_mean, obs_std, critic, actor, rng), obs_mean, obs_std, update_rng
+        return (
+            *update_vaml(model, batch, obs_mean, obs_std, critic, actor, rng),
+            obs_mean,
+            obs_std,
+            update_rng,
+        )
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
@@ -61,6 +79,7 @@ def compute_loss(
     obs_mean: jax.Array,
     obs_std: jax.Array,
     critic: TrainState,
+    critic_target: TrainState,
     actor: TrainState,
     rng: jax.Array,
     mode: str = "nll",
@@ -68,21 +87,35 @@ def compute_loss(
     if mode == "nll":
         return per_ensemble_nll(model, batch, obs_mean, obs_std).mean()
     elif mode == "vagram":
-        return per_ensemble_vagram(model, batch, obs_mean, obs_std, critic, actor, rng).mean()
+        return per_ensemble_vagram(
+            model, batch, obs_mean, obs_std, critic, critic_target, actor, rng
+        ).mean()
     elif mode == "vaml":
-        return per_ensemble_vaml(model, batch, obs_mean, obs_std, critic, actor, rng).mean()
+        return per_ensemble_vaml(
+            model, batch, obs_mean, obs_std, critic, actor, rng
+        ).mean()
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
 
 @functools.partial(jax.jit, static_argnames=("mode"))
 def compute_per_ensemble_loss(
-    model: TrainState, batch: FrozenDict, obs_mean: jax.Array, obs_std: jax.Array, critic: TrainState, actor: TrainState, rng: jax.Array, mode: str = "nll"
+    model: TrainState,
+    batch: FrozenDict,
+    obs_mean: jax.Array,
+    obs_std: jax.Array,
+    critic: TrainState,
+    critic_target: TrainState,
+    actor: TrainState,
+    rng: jax.Array,
+    mode: str = "nll",
 ) -> tuple[jax.Array, jax.Array]:
     if mode == "nll":
         return per_ensemble_nll(model, batch, obs_mean, obs_std)
     elif mode == "vagram":
-        return per_ensemble_vagram(model, batch, obs_mean, obs_std, critic, actor, rng)
+        return per_ensemble_vagram(
+            model, batch, obs_mean, obs_std, critic, critic_target, actor, rng
+        )
     elif mode == "vaml":
         return per_ensemble_vaml(model, batch, obs_mean, obs_std, critic, actor, rng)
     else:
@@ -91,7 +124,9 @@ def compute_per_ensemble_loss(
 
 def _concatenate_pytree(pytree1, pytree2, length, ratio):
     idx = int(length * ratio)
-    return jax.tree_map(lambda x, y: jnp.concatenate([x[:idx], y[idx:]], axis=0), pytree1, pytree2)
+    return jax.tree_map(
+        lambda x, y: jnp.concatenate([x[:idx], y[idx:]], axis=0), pytree1, pytree2
+    )
 
 
 @functools.partial(jax.jit, static_argnames=("depth", "terminal_fn", "prop_real"))
@@ -105,7 +140,7 @@ def compute_model_based_batch(
     depth: int,
     terminal_fn: Callable[[jax.Array], jax.Array],
     elites: jax.Array,
-    prop_real: float = 0.0
+    prop_real: float = 0.0,
 ) -> frozen_dict.FrozenDict:
     n_elites = elites.shape[0]
     bs = batch["observations"].shape[0]
@@ -175,7 +210,7 @@ def compute_model_based_batch(
     return _concatenate_pytree(batch, new_batch, bs, prop_real), rng
 
 
-class ModelLearner(Agent):
+class ModelTrainer(Agent):
     def __init__(
         self,
         seed: int,
@@ -235,21 +270,18 @@ class ModelLearner(Agent):
         self._patience = patience
         self._loss_mode = loss_mode
 
-    def update_step(self, batch: FrozenDict, policy: SACLearner) -> Dict[str, float]:
+    def update_step(self, batch: FrozenDict, policy: SACTrainer) -> Dict[str, float]:
         critic = policy._critic
+        critic_target_params = policy._critic_target_params
+        critic_target = critic.replace(params=critic_target_params)
         actor = policy._actor
-        (
-            new_model,
-            info,
-            obs_mean,
-            obs_std,
-            self._rng
-        ) = _update_jit(
+        (new_model, info, obs_mean, obs_std, self._rng) = _update_jit(
             self._model,
             batch,
             self._obs_mean,
             self._obs_std,
             critic,
+            critic_target,
             actor,
             self._rng,
             mode=self._loss_mode,
@@ -264,15 +296,13 @@ class ModelLearner(Agent):
     def yield_data(
         self,
         dataset: Dataset,
-        policy: SACLearner,
+        policy: SACTrainer,
         batch_size: int,
         num_samples: int,
         depth=1,
         termination_fn=lambda x: jnp.zeros_like(x[:, :1]),
         prop_real=0.0,
     ):
-        print(prop_real)
-
         for i, batch in enumerate(looping_epoch_iter(dataset, batch_size)):
             if i == num_samples:
                 break
@@ -293,6 +323,9 @@ class ModelLearner(Agent):
 
     def compute_elites(self, dataset: Dataset, policy, batch_size: int):
         critic = policy._critic
+        critic = policy._critic
+        critic_target_params = policy._critic_target_params
+        critic_target = critic.replace(params=critic_target_params)
         actor = policy._actor
         _losses: list[jax.Array] = []
         for batch in dataset.get_epoch_iter(batch_size):
@@ -302,6 +335,7 @@ class ModelLearner(Agent):
                 self._obs_mean,
                 self._obs_std,
                 critic,
+                critic_target,
                 actor,
                 self._rng,
                 mode=self._loss_mode,
@@ -321,10 +355,14 @@ class ModelLearner(Agent):
     def update_model(
         self,
         dataset: Dataset,
-        policy: SACLearner,
+        policy: SACTrainer,
         batch_size: int,
         max_iters: int | None = None,
     ):
+        critic = policy._critic
+        critic_target_params = policy._critic_target_params
+        critic_target = critic.replace(params=critic_target_params)
+
         train_dataset, val_dataset = dataset.split(0.8)
 
         val_losses = []
@@ -344,7 +382,15 @@ class ModelLearner(Agent):
             for batch in val_dataset.get_epoch_iter(batch_size):
                 self._rng, rng = jax.jit(jax.random.split)(self._rng)
                 _val_loss = compute_loss(
-                    self._model, batch, self._obs_mean, self._obs_std, policy._critic, policy._actor, rng, mode=self._loss_mode
+                    self._model,
+                    batch,
+                    self._obs_mean,
+                    self._obs_std,
+                    policy._critic,
+                    critic_target,
+                    policy._actor,
+                    rng,
+                    mode=self._loss_mode,
                 )
                 _val_loss = jnp.nan_to_num(_val_loss)
                 epoch_val_loss += _val_loss
@@ -366,10 +412,5 @@ class ModelLearner(Agent):
 
 
 def looping_epoch_iter(dataset, batch_size):
-    data_iter = dataset.get_epoch_iter(batch_size)
     while True:
-        try:
-            yield next(data_iter)
-        except StopIteration:
-            data_iter = dataset.get_epoch_iter(batch_size)
-            yield next(data_iter)
+        yield dataset.sample(batch_size)

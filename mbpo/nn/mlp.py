@@ -49,7 +49,7 @@ class MLP(nn.Module):
         x = _flatten_dict(x)
 
         for i, size in enumerate(self.hidden_dims):
-            x = nn.Dense(size, kernel_init=torch_he_uniform())(x)
+            x = nn.Dense(size)(x)  #, kernel_init=torch_he_uniform())(x)
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 x = self.activations(x)
             if i + 1 < len(self.hidden_dims) and self.add_weight_norm:

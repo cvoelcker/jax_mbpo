@@ -36,6 +36,7 @@ def update_nll(
 
         reward_pred = pred_state_dist.mean()[:, :, -1]
         reward_acc = jnp.mean((reward_pred - reward[:, jnp.newaxis]) ** 2)
+        jax.debug.print("{}", state_acc)
 
         return state_loss, {
             "state_loss": state_loss,
@@ -182,7 +183,7 @@ def per_ensemble_vaml(
         (pred_state_dist.sample(seed=rng)[..., -1] - reward[:, jnp.newaxis]) ** 2
     )
 
-    return - (state_loss + reward_acc)
+    return -(state_loss + reward_acc)
 
 
 def update_vagram(
@@ -191,6 +192,7 @@ def update_vagram(
     obs_mean: jnp.ndarray,
     obs_std: jnp.ndarray,
     critic: TrainState,
+    critic_target: TrainState,
     actor: TrainState,
     rng: jax.Array,
 ) -> Tuple[TrainState, Dict[str, float]]:
@@ -200,16 +202,32 @@ def update_vagram(
     reward = batch["rewards"]
     target_state = jnp.concatenate([next_state, reward[..., jnp.newaxis]], axis=-1)
 
-    action = actor.apply_fn({"params": actor.params}, next_state).sample(seed=rng)
-    target_q_sensitivity = jax.grad(
-        lambda x: critic.apply_fn({"params": critic.params}, x, action).sum()
-    )(next_state)
-    # clamp huge outliers in grad norm
-    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 5, 95) + 0.1
-    # make sure we fit the reward accurately
-    reward_sensitivity = jnp.ones_like(reward[:, jnp.newaxis])  # * jnp.mean(target_q_sensitivity)
+    value_action = actor.apply_fn({"params": actor.params}, next_state).sample(seed=rng)
+    q_sensitivity = jax.vmap(
+        jax.jacrev(
+            lambda x, a: critic.apply_fn(
+                {"params": critic.params}, x.reshape(1, -1), a.reshape(1, -1)
+            )
+        )
+    )(next_state, value_action)
+    target_q_sensitivity = jax.vmap(
+        jax.jacrev(
+            lambda x, a: critic_target.apply_fn(
+                {"params": critic_target.params}, x.reshape(1, -1), a.reshape(1, -1)
+            )
+        )
+    )(next_state, value_action)
     target_q_sensitivity = jnp.concatenate(
-        [target_q_sensitivity, reward_sensitivity], axis=-1
+        [target_q_sensitivity, q_sensitivity], axis=1
+    )
+    # clamp huge outliers in grad norm
+    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0, 95)
+    # make sure we fit the reward accurately
+    reward_sensitivity = jnp.repeat(
+        jnp.ones_like(reward[:, jnp.newaxis, jnp.newaxis]), 4, 1
+    )  # * jnp.mean(target_q_sensitivity)
+    target_q_sensitivity = jnp.concatenate(
+        [target_q_sensitivity.squeeze(-2), reward_sensitivity], axis=-1
     )
 
     def model_loss_fn(model_params: Params) -> Tuple[jnp.ndarray, Dict[str, float]]:
@@ -218,15 +236,14 @@ def update_vagram(
         )
         state_loss = (
             -(
-                pred_state_dist.weighted_log_prob(
+                jax.vmap(pred_state_dist.weighted_log_prob, in_axes=(None, 1))(
                     target_state[:, jnp.newaxis, :],
-                    target_q_sensitivity[:, jnp.newaxis, :],
+                    target_q_sensitivity[:, :, jnp.newaxis, :],
                 )
             )
-            .sum(axis=-1)
+            # .sum((1, 2))
             .mean()
         )
-
         state_pred = pred_state_dist.mean()[:, :, :-1]
         state_acc = jnp.mean((state_pred - target_state[:, jnp.newaxis, :-1]) ** 2)
 
@@ -241,7 +258,7 @@ def update_vagram(
             "reward_std": jnp.mean(pred_state_dist.stddev()[:, :, -1:]),
             "sensitivity_mean": jnp.mean(target_q_sensitivity),
             "sentitivity_min": jnp.min(target_q_sensitivity),
-            "sensitivity_max": jnp.max(target_q_sensitivity)
+            "sensitivity_max": jnp.max(target_q_sensitivity),
         }
 
     grads, info = jax.grad(model_loss_fn, has_aux=True)(model.params)
@@ -255,6 +272,7 @@ def per_ensemble_vagram(
     obs_mean: jax.Array,
     obs_std: jax.Array,
     critic: TrainState,
+    critic_target: TrainState,
     actor: TrainState,
     rng: jax.Array,
 ) -> jax.Array:
@@ -264,33 +282,55 @@ def per_ensemble_vagram(
     reward = batch["rewards"]
     target_state = jnp.concatenate([next_state, reward[..., jnp.newaxis]], axis=-1)
 
-    action = actor.apply_fn({"params": actor.params}, next_state).sample(seed=rng)
-    target_q_sensitivity = jax.grad(
-        lambda x: critic.apply_fn({"params": critic.params}, x, action).sum()
-    )(next_state)
-    # clamp huge outliers in grad norm
-    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 5, 95) + 0.1
-    # make sure we fit the reward accurately
-    reward_sensitivity = jnp.ones_like(reward[:, jnp.newaxis])  # * jnp.mean(target_q_sensitivity)
+    value_action = actor.apply_fn({"params": actor.params}, next_state).sample(seed=rng)
+    q_sensitivity = jax.vmap(
+        jax.jacrev(
+            lambda x, a: critic.apply_fn(
+                {"params": critic.params}, x.reshape(1, -1), a.reshape(1, -1)
+            )
+        )
+    )(next_state, value_action)
+    target_q_sensitivity = jax.vmap(
+        jax.jacrev(
+            lambda x, a: critic_target.apply_fn(
+                {"params": critic_target.params}, x.reshape(1, -1), a.reshape(1, -1)
+            )
+        )
+    )(next_state, value_action)
     target_q_sensitivity = jnp.concatenate(
-        [target_q_sensitivity, reward_sensitivity], axis=-1
+        [target_q_sensitivity, q_sensitivity], axis=1
+    )
+    # clamp huge outliers in grad norm
+    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0, 95)
+    # make sure we fit the reward accurately
+    reward_sensitivity = jnp.repeat(
+        jnp.ones_like(reward[:, jnp.newaxis, jnp.newaxis]), 4, 1
+    )  # * jnp.mean(target_q_sensitivity)
+    target_q_sensitivity = jnp.concatenate(
+        [target_q_sensitivity.squeeze(-2), reward_sensitivity], axis=-1
     )
 
     pred_state_dist = model.apply_fn(
         {"params": model.params}, state, action, obs_mean, obs_std
     )
     state_loss = (
-        pred_state_dist.weighted_log_prob(
-            target_state[:, jnp.newaxis, :],
-            target_q_sensitivity[:, jnp.newaxis, :],
+        (
+            jax.vmap(pred_state_dist.weighted_log_prob, in_axes=(None, 1))(
+                target_state[:, jnp.newaxis, :],
+                target_q_sensitivity[:, :, jnp.newaxis, :],
+            )
         )
-    ).mean(0)
+        # .sum(1)
+        .mean((0, 1))
+    )
 
     return state_loss
 
 
 def clip_by_norm_percentile(x, lower, upper):
     norms = jnp.linalg.norm(x, axis=-1, keepdims=True)
-    lower_percentile, upper_percentile = jnp.percentile(norms.squeeze(), jnp.array([lower, upper]))
+    lower_percentile, upper_percentile = jnp.percentile(
+        norms.squeeze(), jnp.array([lower, upper])
+    )
     clipped_norms = jnp.clip(norms, lower_percentile, upper_percentile)
     return jnp.abs(x * (clipped_norms / norms))

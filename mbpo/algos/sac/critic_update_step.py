@@ -12,7 +12,7 @@ def update_critic(
     key: PRNGKey,
     actor: TrainState,
     critic: TrainState,
-    target_critic: TrainState,
+    critic_target: TrainState,
     temp: TrainState,
     batch: DatasetDict,
     discount: float,
@@ -21,8 +21,8 @@ def update_critic(
 ) -> Tuple[TrainState, Dict[str, float]]:
     dist = actor.apply_fn({"params": actor.params}, batch["next_observations"])
     next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
-    next_qs = target_critic.apply_fn(
-        {"params": target_critic.params}, batch["next_observations"], next_actions
+    next_qs = critic_target.apply_fn(
+        {"params": critic_target.params}, batch["next_observations"], next_actions
     )
     if critic_reduction == "min":
         next_q = next_qs.min(axis=0)

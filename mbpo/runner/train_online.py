@@ -5,9 +5,9 @@ import copy
 import wandb
 import hydra
 from omegaconf import OmegaConf
-from mbpo.algos.model_learning.model_learner import ModelLearner
+from mbpo.algos.model_learning.model_trainer import ModelTrainer
 
-from mbpo.algos.sac import SACLearner
+from mbpo.algos.sac.sac_trainer import SACTrainer
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
 
@@ -32,8 +32,8 @@ def main(cfg):
 
     sac_kwargs = OmegaConf.to_container(cfg.sac_kwargs)
     model_kwargs = OmegaConf.to_container(cfg.model_kwargs)
-    agent = SACLearner(cfg.seed, env.observation_space, env.action_space, **sac_kwargs)
-    model = ModelLearner(
+    agent = SACTrainer(cfg.seed, env.observation_space, env.action_space, **sac_kwargs)
+    model = ModelTrainer(
         cfg.seed, env.observation_space, env.action_space, **model_kwargs
     )
 
@@ -83,7 +83,10 @@ def main(cfg):
                     cfg.policy_steps * cfg.model_update_interval,
                     termination_fn=term_fn,
                     depth=compute_schedule(*cfg.model_kwargs.depth_schedule, i // 1000),
-                    prop_real=compute_schedule(*cfg.model_kwargs.prop_real_schedule, i // 1000) / 10.,
+                    prop_real=compute_schedule(
+                        *cfg.model_kwargs.prop_real_schedule, i // 1000
+                    )
+                    / 10.0,
                 )
                 for k, v in info.items():
                     wandb.log({f"training/model/{k}": v}, step=i)

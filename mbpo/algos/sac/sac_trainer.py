@@ -12,10 +12,10 @@ from flax.core.frozen_dict import FrozenDict
 from flax.training.train_state import TrainState
 
 from mbpo.algos.agent import Agent
-from mbpo.algos.sac.actor_updater import update_actor
-from mbpo.algos.sac.critic_updater import update_critic
+from mbpo.algos.sac.actor_update_step import update_actor
+from mbpo.algos.sac.critic_update_step import update_critic
 from mbpo.algos.sac.temperature import Temperature
-from mbpo.algos.sac.temperature_updater import update_temperature
+from mbpo.algos.sac.temperature_update_step import update_temperature
 from mbpo.nn.normal_tanh_policy import NormalTanhPolicy
 from mbpo.nn.values import StateActionEnsemble
 from mbpo.types import Params, PRNGKey
@@ -29,7 +29,7 @@ def _update_jit(
     rng: PRNGKey,
     actor: TrainState,
     critic: TrainState,
-    target_critic_params: Params,
+    critic_target_params: Params,
     temp: TrainState,
     batch: FrozenDict,
     discount: float,
@@ -41,12 +41,12 @@ def _update_jit(
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
 
     rng, key = jax.random.split(rng)
-    target_critic = critic.replace(params=target_critic_params)
+    critic_target = critic.replace(params=critic_target_params)
     new_critic, critic_info = update_critic(
         key,
         actor,
         critic,
-        target_critic,
+        critic_target,
         temp,
         batch,
         discount,
@@ -54,11 +54,11 @@ def _update_jit(
         critic_reduction=critic_reduction,
     )
     if update_target:
-        new_target_critic_params = soft_target_update(
-            new_critic.params, target_critic_params, tau
+        new_critic_target_params = soft_target_update(
+            new_critic.params, critic_target_params, tau
         )
     else:
-        new_target_critic_params = target_critic_params
+        new_critic_target_params = critic_target_params
 
     rng, key = jax.random.split(rng)
     new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch)
@@ -70,13 +70,13 @@ def _update_jit(
         rng,
         new_actor,
         new_critic,
-        new_target_critic_params,
+        new_critic_target_params,
         new_temp,
         {**critic_info, **actor_info, **alpha_info},
     )
 
 
-class SACLearner(Agent):
+class SACTrainer(Agent):
     def __init__(
         self,
         seed: int,
@@ -150,7 +150,7 @@ class SACLearner(Agent):
             params=critic_params,
             tx=optax.adam(learning_rate=critic_lr),
         )
-        target_critic_params = copy.deepcopy(critic_params)
+        critic_target_params = copy.deepcopy(critic_params)
 
         temp_def = Temperature(init_temperature)
         temp_params = temp_def.init(temp_key)["params"]
@@ -164,7 +164,7 @@ class SACLearner(Agent):
 
         self._actor = actor
         self._critic = critic
-        self._target_critic_params = target_critic_params
+        self._critic_target_params = critic_target_params
         self._temp = temp
         self._rng = rng
 
@@ -173,14 +173,14 @@ class SACLearner(Agent):
             new_rng,
             new_actor,
             new_critic,
-            new_target_critic_params,
+            new_critic_target_params,
             new_temp,
             info,
         ) = _update_jit(
             self._rng,
             self._actor,
             self._critic,
-            self._target_critic_params,
+            self._critic_target_params,
             self._temp,
             batch,
             self.discount,
@@ -194,7 +194,7 @@ class SACLearner(Agent):
         self._rng = new_rng
         self._actor = new_actor
         self._critic = new_critic
-        self._target_critic_params = new_target_critic_params
+        self._critic_target_params = new_critic_target_params
         self._temp = new_temp
 
         return info
