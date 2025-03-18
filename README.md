@@ -1,4 +1,4 @@
-# Jax - Model-based Policy optimization
+# Jax - Model-based Policy Optimization
 
 This repository implements the papers [When to Trust Your Model: Model-Based Policy Optimization](https://github.com/jannerm/mbpo?tab=readme-ov-file) and [Value Gradient weighted Model-Based Reinforcement Learning](https://github.com/pairlab/vagram/tree/main) in jax.
 
