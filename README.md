@@ -21,10 +21,13 @@ Simply follow the instructions.
 ## Running
 
 To run the experiment, you can simply execute `uv run mbp/runner/train_online.py`.
+The config is handled via hydra.
+The default config can be found in `config/main.yaml`.
 
 ## Roadmap
 
 - [ ] hydra submitit integration
+- [ ] set default configs to paper values for each env
 - [ ] saving and loading of models and interrupt training
 - [ ] modern SAC architectures
 - [ ] parallel multi-seed training
