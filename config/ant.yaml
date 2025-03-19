@@ -11,6 +11,10 @@ start_training: 1e4
 model_update_interval: 250
 tqdm: True
 wandb: True
+wandb_kwargs:
+  project: model-based-rl
+  entity: "your_wandb_entity"
+  tags: ["sac", "model-based-rl"]
 save_video: False
 
 sac_kwargs:

@@ -5,13 +5,6 @@ import copy
 import wandb
 import hydra
 from omegaconf import OmegaConf
-<<<<<<< Updated upstream
-=======
-
-import jax.numpy as jnp
-
-from mbpo.algos.model_learning.model_trainer import ModelTrainer
->>>>>>> Stashed changes
 
 import jax.numpy as jnp
 
@@ -24,7 +17,6 @@ from mbpo.env_utils.termination_fns import lookup_termination_fn
 
 @hydra.main(config_path="../../config", config_name="main")
 def main(cfg):
-    print(cfg)
     wandb.init(**cfg.wandb_kwargs)
     wandb.config.update(OmegaConf.to_container(cfg=cfg))
 
@@ -162,7 +154,6 @@ def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, ep
             * increment
             + init_value
         ).astype(dtype).item()
-    print(type(schedule_value))
     return schedule_value
 
 
