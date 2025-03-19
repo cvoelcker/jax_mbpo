@@ -5,6 +5,13 @@ import copy
 import wandb
 import hydra
 from omegaconf import OmegaConf
+<<<<<<< Updated upstream
+=======
+
+import jax.numpy as jnp
+
+from mbpo.algos.model_learning.model_trainer import ModelTrainer
+>>>>>>> Stashed changes
 
 import jax.numpy as jnp
 
@@ -13,10 +20,6 @@ from mbpo.algos.sac.sac_trainer import SACTrainer
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
 from mbpo.env_utils.termination_fns import lookup_termination_fn
-
-# disable jit
-# import jax
-# jax.config.update("jax_disable_jit", True)
 
 
 @hydra.main(config_path="../../config", config_name="main")
@@ -73,6 +76,7 @@ def main(cfg):
                 wandb.log({f"training/{decode[k]}": v}, step=i)
 
         if i >= cfg.start_training:
+            epoch = i // 1000
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
                 info = model.update_model(
                     replay_buffer, agent, cfg.batch_size
@@ -83,11 +87,10 @@ def main(cfg):
                     cfg.batch_size,
                     cfg.policy_steps * cfg.model_update_interval,
                     termination_fn=term_fn,
-                    depth=compute_schedule(*cfg.model_kwargs.depth_schedule, i // 1000),
+                    depth=compute_schedule(*cfg.model_kwargs.depth_schedule, epoch),
                     prop_real=compute_schedule(
-                        *cfg.model_kwargs.prop_real_schedule, i // 1000
+                        *cfg.model_kwargs.prop_real_schedule, epoch
                     )
-                    / 10.0,
                 )
                 for k, v in info.items():
                     assert jnp.isfinite(
@@ -128,15 +131,39 @@ def main(cfg):
                 wandb.log({f"evaluation/{k}": v}, step=i)
 
 
-def compute_schedule(init_epoch, end_epoch, init_value, end_value, epoch):
+def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):
+    """
+    Compute a schedule that linearly interpolates between init_value and end_value.
+    The schedule is incremented discretely by increment to allow for integer values
+    and to be used with jax.jit static argnames.
+
+    Args:
+        init_epoch (int): The epoch at which the schedule starts
+        end_epoch (int): The epoch at which the schedule ends
+        init_value (float): The value at init_epoch
+        end_value (float): The value at end_epoch
+        increment (int): The increment of the schedule
+        epoch (int): The current epoch
+    """
+    dtype = jnp.array([init_value]).dtype
+
     if epoch < init_epoch:
-        return init_value
-    if epoch > end_epoch:
-        return end_value
-    return int(
-        init_value
-        + (end_value - init_value) * (epoch - init_epoch) / (end_epoch - init_epoch)
-    )
+        schedule_value = init_value
+    elif epoch > end_epoch:
+        schedule_value = end_value
+    else:
+        schedule_value = (
+            jnp.round(
+                (end_value - init_value)
+                / (end_epoch - init_epoch)
+                * (epoch - init_epoch)
+                / increment
+            )
+            * increment
+            + init_value
+        ).astype(dtype).item()
+    print(type(schedule_value))
+    return schedule_value
 
 
 if __name__ == "__main__":

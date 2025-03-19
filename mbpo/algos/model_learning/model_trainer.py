@@ -370,13 +370,8 @@ class ModelTrainer(Agent):
         best = jnp.finfo(jnp.float32).min
         best_iter = 0
         for iters in tqdm(range(max_iters)):
-            batch_infos = []
             for batch in train_dataset.get_epoch_iter(batch_size):
                 info = self.update_step(batch, policy)
-                batch_infos.append(info)
-                assert jax.tree_util.tree_reduce(
-                    jnp.logical_and, jax.tree_map(jnp.isfinite, info)
-                ), batch_infos
             self._models.append(self._model)
             epoch_val_loss = 0.0
             val_iters = 0.0

@@ -8,7 +8,8 @@ This is a work in progress, and it builds on newer environment version. Therefor
 
 ## Installation
 
-The repository uses `uv` to make running simple. Make sure you have a GPU with CUDA 12 installed.
+The repository uses [`uv`](https://github.com/astral-sh/uv) to make running simple. Make sure you have a GPU with CUDA 12 installed.
+If you want to run this on CPU, TPU, or an ARM machine, you will have to change the relevant jax package in the `pyrpoject.toml` file.
 Necessary python packages will be installed automatically if you execute the run script.
 In case you need a separate installation you can also create a virtualenv and run `pip install -e .`.
 Necessary dependencies will be installed.
@@ -20,7 +21,7 @@ Simply follow the instructions.
 
 ## Running
 
-To run the experiment, you can simply execute `uv run mbp/runner/train_online.py`.
+To run the experiment, you can simply execute `uv run mbpo/runner/train_online.py`.
 The config is handled via hydra.
 The default config can be found in `config/main.yaml`.
 
