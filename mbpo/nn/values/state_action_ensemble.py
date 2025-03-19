@@ -8,7 +8,7 @@ from mbpo.nn.values.state_action_value import StateActionValue
 
 class StateActionEnsemble(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.elu
     num_qs: int = 2
     add_weight_norm: bool = False
 

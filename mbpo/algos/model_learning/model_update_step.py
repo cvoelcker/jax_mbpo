@@ -36,7 +36,6 @@ def update_nll(
 
         reward_pred = pred_state_dist.mean()[:, :, -1]
         reward_acc = jnp.mean((reward_pred - reward[:, jnp.newaxis]) ** 2)
-        jax.debug.print("{}", state_acc)
 
         return state_loss, {
             "state_loss": state_loss,
@@ -221,11 +220,11 @@ def update_vagram(
         [target_q_sensitivity, q_sensitivity], axis=1
     )
     # clamp huge outliers in grad norm
-    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0, 95)
+    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0.05, 95)
     # make sure we fit the reward accurately
     reward_sensitivity = jnp.repeat(
         jnp.ones_like(reward[:, jnp.newaxis, jnp.newaxis]), 4, 1
-    )  # * jnp.mean(target_q_sensitivity)
+    )  * jnp.mean(target_q_sensitivity)
     target_q_sensitivity = jnp.concatenate(
         [target_q_sensitivity.squeeze(-2), reward_sensitivity], axis=-1
     )
@@ -301,11 +300,11 @@ def per_ensemble_vagram(
         [target_q_sensitivity, q_sensitivity], axis=1
     )
     # clamp huge outliers in grad norm
-    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0, 95)
+    target_q_sensitivity = clip_by_norm_percentile(target_q_sensitivity, 0.05, 95)
     # make sure we fit the reward accurately
     reward_sensitivity = jnp.repeat(
         jnp.ones_like(reward[:, jnp.newaxis, jnp.newaxis]), 4, 1
-    )  # * jnp.mean(target_q_sensitivity)
+    ) * jnp.mean(target_q_sensitivity)
     target_q_sensitivity = jnp.concatenate(
         [target_q_sensitivity.squeeze(-2), reward_sensitivity], axis=-1
     )
@@ -328,7 +327,7 @@ def per_ensemble_vagram(
 
 
 def clip_by_norm_percentile(x, lower, upper):
-    norms = jnp.linalg.norm(x, axis=-1, keepdims=True)
+    norms = jnp.linalg.norm(x, axis=-1, keepdims=True) + 1e-6
     lower_percentile, upper_percentile = jnp.percentile(
         norms.squeeze(), jnp.array([lower, upper])
     )

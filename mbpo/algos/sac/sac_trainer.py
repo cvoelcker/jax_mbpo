@@ -6,6 +6,7 @@ from typing import Dict, Optional, Sequence, Tuple
 
 import gymnasium as gym
 import jax
+import jax.numpy as jnp
 import numpy as np
 import optax
 from flax.core.frozen_dict import FrozenDict

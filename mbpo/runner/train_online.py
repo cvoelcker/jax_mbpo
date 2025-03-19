@@ -5,12 +5,13 @@ import copy
 import wandb
 import hydra
 from omegaconf import OmegaConf
-from mbpo.algos.model_learning.model_trainer import ModelTrainer
 
+import jax.numpy as jnp
+
+from mbpo.algos.model_learning.model_trainer import ModelTrainer
 from mbpo.algos.sac.sac_trainer import SACTrainer
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
-
 from mbpo.env_utils.termination_fns import lookup_termination_fn
 
 # disable jit
@@ -89,6 +90,9 @@ def main(cfg):
                     / 10.0,
                 )
                 for k, v in info.items():
+                    assert jnp.isfinite(
+                        v
+                    ).all(), f"{k} is not finite in iteration {i}, got {v}, with full dict {info}"
                     wandb.log({f"training/model/{k}": v}, step=i)
 
             for j in range(cfg.policy_steps):

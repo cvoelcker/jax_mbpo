@@ -8,7 +8,7 @@ from mbpo.nn.mlp import MLP
 
 class StateValue(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.elu
 
     @nn.compact
     def __call__(

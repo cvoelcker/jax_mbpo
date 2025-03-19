@@ -7,7 +7,7 @@ eval_interval: 5000
 batch_size: 256
 max_steps: 1e6
 policy_steps: 20
-start_training: 5e3
+start_training: 1e4
 model_update_interval: 250
 tqdm: True
 wandb: True
@@ -30,7 +30,7 @@ sac_kwargs:
   critic_reduction: min
   init_temperature: 1.0
   critic_weight_norm: True
-  actor_weight_norm: False
+  actor_weight_norm: True
   target_update_interval: 4
 model_kwargs:
   depth_schedule: [20, 100, 1, 1]

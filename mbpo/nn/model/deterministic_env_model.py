@@ -64,7 +64,9 @@ class DeterministicEnsembleModel(nn.Module):
             [observations, jnp.zeros_like(observations[..., :1])], axis=-1
         )
         if len(offset_state.shape) < 2 or offset_state.shape[-2] != self.num_ensemble:
-            offset_state = jnp.expand_dims(offset_state, axis=-2).repeat(self.num_ensemble, axis=-2)
+            offset_state = jnp.expand_dims(offset_state, axis=-2).repeat(
+                self.num_ensemble, axis=-2
+            )
 
         means_and_rewards = means_and_rewards + offset_state
 

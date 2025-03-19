@@ -10,6 +10,7 @@ import optax
 from flax.core.frozen_dict import FrozenDict
 from flax.core import frozen_dict
 from flax.training.train_state import TrainState
+from tqdm import tqdm
 
 from mbpo.algos.agent import Agent
 from mbpo.algos.model_learning.model_update_step import (
@@ -357,7 +358,7 @@ class ModelTrainer(Agent):
         dataset: Dataset,
         policy: SACTrainer,
         batch_size: int,
-        max_iters: int | None = None,
+        max_iters: int | None = 200,
     ):
         critic = policy._critic
         critic_target_params = policy._critic_target_params
@@ -366,16 +367,16 @@ class ModelTrainer(Agent):
         train_dataset, val_dataset = dataset.split(0.8)
 
         val_losses = []
-        update = True
-        iters = 0
         best = jnp.finfo(jnp.float32).min
         best_iter = 0
-        while update:
-            iters += 1
+        for iters in tqdm(range(max_iters)):
             batch_infos = []
             for batch in train_dataset.get_epoch_iter(batch_size):
                 info = self.update_step(batch, policy)
                 batch_infos.append(info)
+                assert jax.tree_util.tree_reduce(
+                    jnp.logical_and, jax.tree_map(jnp.isfinite, info)
+                ), batch_infos
             self._models.append(self._model)
             epoch_val_loss = 0.0
             val_iters = 0.0
@@ -399,10 +400,9 @@ class ModelTrainer(Agent):
             val_losses.append(epoch_val_loss)
             best = jnp.maximum(best, epoch_val_loss)
             best_iter = iters if epoch_val_loss == best else best_iter
-            update = (
+            if not (
                 len(val_losses) < self._patience or iters - best_iter < self._patience
-            )
-            if max_iters is not None and iters == max_iters:
+            ):
                 break
         info["iters"] = iters
         info["val_loss"] = epoch_val_loss

@@ -38,7 +38,7 @@ def l2_normalization_activation(x: jax.Array) -> jax.Array:
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.elu
     activate_final: int = False
     scale_final: Optional[float] = None
     dropout_rate: Optional[float] = None
@@ -49,9 +49,9 @@ class MLP(nn.Module):
         x = _flatten_dict(x)
 
         for i, size in enumerate(self.hidden_dims):
-            x = nn.Dense(size)(x)  #, kernel_init=torch_he_uniform())(x)
+            x = nn.Dense(size)(x)  # , kernel_init=torch_he_uniform())(x)
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 x = self.activations(x)
-            if i + 1 < len(self.hidden_dims) and self.add_weight_norm:
+            if i + 2 == len(self.hidden_dims) and self.add_weight_norm:
                 x = l2_normalization_activation(x)
         return x
