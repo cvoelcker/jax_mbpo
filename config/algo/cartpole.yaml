@@ -1,0 +1,46 @@
+env_name: Cartpole-v5
+save_dir: ./tmp/
+seed: 42
+eval_episodes: 10
+log_interval: 100
+eval_interval: 5000
+batch_size: 256
+max_steps: 3e5
+policy_steps: 20
+start_training: 1e4
+model_update_interval: 250
+tqdm: True
+wandb: True
+save_freq: 10000
+wandb_kwargs:
+  project: model-based-rl
+  entity: "your_wandb_entity"
+  tags: ["sac", "model-based-rl"]
+save_video: False
+
+sac_kwargs:
+  actor_lr: 3e-4
+  critic_lr: 3e-4
+  temp_lr: 1e-3
+  critic_hidden_dims: [1024, 1024]
+  actor_hidden_dims: [1024, 1024]
+  discount: 0.99
+  tau: 0.005
+  target_entropy: 
+  backup_entropy: True
+  critic_reduction: min
+  init_temperature: 1.0
+  critic_weight_norm: True
+  actor_weight_norm: True
+  target_update_interval: 4
+model_kwargs:
+  depth_schedule: [20, 20, 1, 1, 1]
+  prop_real_schedule: [1, 5, 1, 0.1, 0.1]
+  n_ensemble: 7
+  n_elites: 5
+  patience: 25
+  model_hidden_dims: [200, 200, 200, 200]
+  model_lr: 1e-4
+  model_weight_norm: False
+  deterministic: True
+  loss_mode: nll

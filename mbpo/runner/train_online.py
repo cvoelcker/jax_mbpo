@@ -24,7 +24,16 @@ from mbpo.utils.checkpoint import CheckpointGroup
 
 @hydra.main(config_path="../../config", config_name="main")
 def main(cfg):
-    wandb.init(**cfg.wandb_kwargs)
+    cfg = cfg.algo
+    if os.path.exists("wandb_id"):
+        with open("wandb_id", "r") as f:
+            run_id = f.read().strip()
+        wandb.init(**cfg.wandb_kwargs, resume="allow", id=run_id)
+    else:
+        wandb.init(**cfg.wandb_kwargs, resume="allow")
+        with open("wandb_id", "w") as f:
+            f.write(wandb.run.id)
+
     wandb.config.update(OmegaConf.to_container(cfg=cfg))
 
     env = gym.make(cfg.env_name)
@@ -178,7 +187,7 @@ def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, ep
         increment (int): The increment of the schedule
         epoch (int): The current epoch
     """
-    dtype = jnp.array([init_value]).dtype
+    dtype = jnp.array([increment]).dtype
 
     if epoch < init_epoch:
         schedule_value = init_value
