@@ -1,18 +1,25 @@
 #! /usr/bin/env pythonA
-import gymnasium as gym
-import tqdm
 import copy
+import os
+
+import gymnasium as gym
+import jax
+import tqdm
 import wandb
 import hydra
 from omegaconf import OmegaConf
 
 import jax.numpy as jnp
+from flax.training import orbax_utils
+import orbax
+import orbax.checkpoint as ocp
 
 from mbpo.algos.model_learning.model_trainer import ModelTrainer
 from mbpo.algos.sac.sac_trainer import SACTrainer
 from mbpo.data import ReplayBuffer
 from mbpo.evaluation import evaluate
 from mbpo.env_utils.termination_fns import lookup_termination_fn
+from mbpo.utils.checkpoint import CheckpointGroup
 
 
 @hydra.main(config_path="../../config", config_name="main")
@@ -36,8 +43,36 @@ def main(cfg):
     replay_buffer = ReplayBuffer(env.observation_space, env.action_space, cfg.max_steps)
     replay_buffer.seed(cfg.seed)
 
+    # setup checkpoint handling
+    options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
+    checkpoint_manager = ocp.CheckpointManager(
+        os.path.join(os.getcwd(), 'checkpoint'), options=options)
+    
+    step = checkpoint_manager.latest_step()
+
+    if step is not None:
+        print("Restoring from step", step)
+        state = CheckpointGroup(
+            agent=agent.get_checkpoint(),
+            model= model.get_checkpoint(),
+            buffer= replay_buffer.get_checkpoint(),
+        )
+        checkpoint = checkpoint_manager.restore(step, args=ocp.args.StandardRestore(state))
+        agent.load_checkpoint(checkpoint.agent)
+        model.load_checkpoint(checkpoint.model)
+        replay_buffer.load_checkpoint(checkpoint.buffer)
+    else:
+        step = 0
+
     (observation, _), done = env.reset(), False
-    for i in tqdm.tqdm(range(1, int(cfg.max_steps) + 1), disable=not cfg.tqdm):
+    for i in tqdm.tqdm(range(step, int(cfg.max_steps) + 1), disable=not cfg.tqdm):
+        if (i % cfg.save_freq) == 0:
+            state = CheckpointGroup(
+                agent=agent.get_checkpoint(),
+                model= model.get_checkpoint(),
+                buffer= replay_buffer.get_checkpoint(),
+            )
+            checkpoint_manager.save(i, args=ocp.args.StandardSave(state))
         if i < cfg.start_training:
             action = env.action_space.sample()
         else:
@@ -68,22 +103,26 @@ def main(cfg):
                 wandb.log({f"training/{decode[k]}": v}, step=i)
 
         if i >= cfg.start_training:
-            epoch = i // 1000
+            epoch = (i - cfg.start_training) // 1000
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
                 info = model.update_model(
                     replay_buffer, agent, cfg.batch_size
-                )  # , max_iters=10)
+                )
+                depth = compute_schedule(*cfg.model_kwargs.depth_schedule, epoch)
+                prop_real = compute_schedule(
+                    *cfg.model_kwargs.prop_real_schedule, epoch
+                )
                 model_dataset = model.yield_data(
                     copy.deepcopy(replay_buffer),
                     copy.deepcopy(agent),
                     cfg.batch_size,
                     cfg.policy_steps * cfg.model_update_interval,
                     termination_fn=term_fn,
-                    depth=compute_schedule(*cfg.model_kwargs.depth_schedule, epoch),
-                    prop_real=compute_schedule(
-                        *cfg.model_kwargs.prop_real_schedule, epoch
-                    )
+                    depth=depth,
+                    prop_real=prop_real
                 )
+                wandb.log({"training/model/depth": depth}, step=i)
+                wandb.log({"training/model/prop_real": prop_real}, step=i)
                 for k, v in info.items():
                     assert jnp.isfinite(
                         v
@@ -121,6 +160,8 @@ def main(cfg):
             eval_info = evaluate(agent, eval_env, num_episodes=cfg.eval_episodes)
             for k, v in eval_info.items():
                 wandb.log({f"evaluation/{k}": v}, step=i)
+
+            
 
 
 def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):

@@ -11,6 +11,7 @@ start_training: 1e4
 model_update_interval: 250
 tqdm: True
 wandb: True
+save_freq: 1000
 wandb_kwargs:
   project: model-based-rl
   entity: "your_wandb_entity"

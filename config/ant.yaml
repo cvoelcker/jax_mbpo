@@ -11,6 +11,7 @@ start_training: 1e4
 model_update_interval: 250
 tqdm: True
 wandb: True
+save_freq: 10000
 wandb_kwargs:
   project: model-based-rl
   entity: "your_wandb_entity"
@@ -34,12 +35,12 @@ sac_kwargs:
   target_update_interval: 4
 model_kwargs:
   depth_schedule: [20, 100, 1, 25, 1]
-  prop_real_schedule: [10, 20, 1, 0.1, 0.1]
+  prop_real_schedule: [10, 40, 1, 0.1, 0.1]
   n_ensemble: 7
   n_elites: 5
   patience: 25
   model_hidden_dims: [200, 200, 200, 200]
-  model_lr: 1e-5
+  model_lr: 1e-4
   model_weight_norm: False
   deterministic: True
   loss_mode: nll

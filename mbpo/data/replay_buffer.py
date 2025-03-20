@@ -24,6 +24,7 @@ def _init_replay_dict(
 def _insert_recursively(
     dataset_dict: DatasetDict, data_dict: DatasetDict, insert_index: int
 ):
+    print(type(dataset_dict))
     if isinstance(dataset_dict, np.ndarray):
         dataset_dict[insert_index] = data_dict
     elif isinstance(dataset_dict, dict):
@@ -71,3 +72,17 @@ class ReplayBuffer(Dataset):
 
         self._insert_index = (self._insert_index + 1) % self._capacity
         self._size = min(self._size + 1, self._capacity)
+
+    def get_checkpoint(self):
+        return {
+            "self._size": self._size,
+            "self._capacity": self._capacity,
+            "self._insert_index": self._insert_index,
+            "data": self.dataset_dict
+        }
+    
+    def load_checkpoint(self, checkpoint):
+        self._size = checkpoint["self._size"]
+        self._capacity = checkpoint["self._capacity"]
+        self._insert_index = checkpoint["self._insert_index"]
+        self.dataset_dict = checkpoint["data"]

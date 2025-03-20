@@ -369,7 +369,7 @@ class ModelTrainer(Agent):
         val_losses = []
         best = jnp.finfo(jnp.float32).min
         best_iter = 0
-        for iters in tqdm(range(max_iters)):
+        for iters in tqdm(range(max_iters), leave=False):
             for batch in train_dataset.get_epoch_iter(batch_size):
                 info = self.update_step(batch, policy)
             self._models.append(self._model)
@@ -404,6 +404,20 @@ class ModelTrainer(Agent):
         info["best_val_loss"] = self.set_best_model(val_losses)
         info["elite_loss"] = self.compute_elites(val_dataset, policy, batch_size)
         return info
+    
+    def get_checkpoint(self):
+        return {
+            "model": self._model,
+            "elites": self._elites,
+            "obs_mean": self._obs_mean,
+            "obs_std": self._obs_std,
+        }
+    
+    def load_checkpoint(self, checkpoint):
+        self._model = checkpoint["model"]
+        self._elites = checkpoint["elites"]
+        self._obs_mean = checkpoint["obs_mean"]
+        self._obs_std = checkpoint["obs_std"]
 
 
 def looping_epoch_iter(dataset, batch_size):

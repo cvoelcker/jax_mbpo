@@ -13,6 +13,7 @@ dependencies = [
     "jax[cuda12]>=0.5.1",
     "ml-collections>=1.0.0",
     "optax>=0.2.4",
+    "orbax>=0.1.9",
     "tqdm>=4.67.1",
     "wandb>=0.19.7",
 ]
