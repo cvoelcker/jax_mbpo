@@ -1,2 +1,4 @@
 defaults:
   - algo: ant
+
+checkpoint_setup: 

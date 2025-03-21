@@ -24,6 +24,10 @@ from mbpo.utils.checkpoint import CheckpointGroup
 
 @hydra.main(config_path="../../config", config_name="main")
 def main(cfg):
+    if cfg.checkpoint_setup == "cluster":
+	os.chdir(f"/cehckpoint/voelcker/{os.getenv(SLURM_JOB_ID)}")
+        os.environ["TQDM_DISABLE"] = "True"
+
     cfg = cfg.algo
     if os.path.exists("wandb_id"):
         with open("wandb_id", "r") as f:

@@ -1,10 +1,10 @@
 defaults:
-  - override hydra/launcher: submitit_slurm
   - algo: ant
+  - override hydra/launcher: submitit_slurm
+
+checkpoint_setup: cluster
 
 hydra:
-  run:
-    dir: /checkpoint/voelcker/${oc.env:SLURM_JOB_ID}
   job:
     chdir: True
   launcher:
