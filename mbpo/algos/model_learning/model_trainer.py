@@ -404,7 +404,7 @@ class ModelTrainer(Agent):
         info["best_val_loss"] = self.set_best_model(val_losses)
         info["elite_loss"] = self.compute_elites(val_dataset, policy, batch_size)
         return info
-    
+
     def get_checkpoint(self):
         return {
             "model": self._model,
@@ -412,7 +412,7 @@ class ModelTrainer(Agent):
             "obs_mean": self._obs_mean,
             "obs_std": self._obs_std,
         }
-    
+
     def load_checkpoint(self, checkpoint):
         self._model = checkpoint["model"]
         self._elites = checkpoint["elites"]

@@ -1,4 +1,11 @@
 env_name: Humanoid-v5
+env_distractions: False
+distraction_kwargs:
+  num_distractions: 0
+  correlated: False
+  linear: True
+  switching: True
+  pure_noise: False
 save_dir: ./tmp/
 seed: 42
 eval_episodes: 10

@@ -207,7 +207,7 @@ class SACTrainer(Agent):
             "critic_target_params": self._critic_target_params,
             "temp": self._temp,
         }
-    
+
     def load_checkpoint(self, checkpoint):
         self._actor = checkpoint["actor"]
         self._critic = checkpoint["critic"]

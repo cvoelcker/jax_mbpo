@@ -30,6 +30,8 @@ The default config can be found in `config/main.yaml`.
 - [x] hydra submitit integration
 - [x] set default configs to paper values for each env
 - [x] saving and loading of models and interrupt training
+- [x] random distractions from paper
+- [ ] run script for paper experiments
 - [ ] modern SAC architectures
 - [ ] parallel multi-seed training
   - difficult due to variable length training times in MBPO

@@ -77,9 +77,9 @@ class ReplayBuffer(Dataset):
             "self._size": self._size,
             "self._capacity": self._capacity,
             "self._insert_index": self._insert_index,
-            "data": self.dataset_dict
+            "data": self.dataset_dict,
         }
-    
+
     def load_checkpoint(self, checkpoint):
         self._size = checkpoint["self._size"]
         self._capacity = checkpoint["self._capacity"]
