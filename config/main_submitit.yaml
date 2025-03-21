@@ -1,0 +1,22 @@
+defaults:
+  - override hydra/launcher: submitit_slurm
+  - algo: ant
+
+hydra:
+  run:
+    dir: /checkpoint/voelcker/${oc.env:SLURM_JOB_ID}
+  job:
+    chdir: True
+  launcher:
+    timeout_min: 1440
+    max_num_timeout: 10
+    submitit_folder: ${oc.env:HOME}/submitit
+    qos: scavenger
+    gres: gpu:1
+    partition: rtx6000,a40,t4v2
+    mem_gb: 64
+    cpus_per_task: 16
+    setup:
+      - "source ~/.bashrc"
+      - "hostname"
+      - "nvidia-smi"
