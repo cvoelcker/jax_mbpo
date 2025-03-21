@@ -24,9 +24,9 @@ from mbpo.utils.target_update import soft_target_update
 
 
 @functools.partial(
-    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target")
+    jax.vmap, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None, None, None, None)
 )
-def _update_jit(
+def _vmapped_update(
     rng: PRNGKey,
     actor: TrainState,
     critic: TrainState,
@@ -38,10 +38,11 @@ def _update_jit(
     target_entropy: float,
     backup_entropy: bool,
     critic_reduction: str,
-    update_target: bool,
+    step: int,
+    update_target: int,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
 
-    rng, key = jax.random.split(rng)
+    rng, key = jax.random.split(rng, 2)
     critic_target = critic.replace(params=critic_target_params)
     new_critic, critic_info = update_critic(
         key,
@@ -54,7 +55,7 @@ def _update_jit(
         backup_entropy=backup_entropy,
         critic_reduction=critic_reduction,
     )
-    if update_target:
+    if (step % update_target) == 0:
         new_critic_target_params = soft_target_update(
             new_critic.params, critic_target_params, tau
         )
@@ -77,12 +78,59 @@ def _update_jit(
     )
 
 
+@functools.partial(
+    jax.jit,
+    static_argnames=(
+        "num_updates",
+        "discount",
+        "tau",
+        "target_entropy",
+        "backup_entropy",
+        "critic_reduction",
+    ),
+)
+def _do_multiple_updates(
+    num_updates: int,
+    rng: PRNGKey,
+    actor: TrainState,
+    critic: TrainState,
+    critic_target_params: Params,
+    temp: TrainState,
+    batch: FrozenDict,
+    discount: float,
+    tau: float,
+    target_entropy: float,
+    backup_entropy: bool,
+    critic_reduction: str,
+    update_target: int,
+):
+    # explicit for loop to force unrolling so target update interval is handled correctly
+    for step in range(num_updates):
+        rng, actor, critic, critic_target_params, temp, info = _vmapped_update(
+            rng,
+            actor,
+            critic,
+            critic_target_params,
+            temp,
+            batch,
+            discount,
+            tau,
+            target_entropy,
+            backup_entropy,
+            critic_reduction,
+            step,
+            update_target,
+        )
+    return rng, actor, critic, critic_target_params, temp, info
+
+
 class SACTrainer(Agent):
     def __init__(
         self,
         seed: int,
         observation_space: gym.Space,
         action_space: gym.Space,
+        num_seeds: int,
         actor_lr: float = 3e-4,
         critic_lr: float = 3e-4,
         temp_lr: float = 3e-4,
@@ -96,6 +144,7 @@ class SACTrainer(Agent):
         target_update_interval: int = 1,
         critic_weight_norm: bool = False,
         actor_weight_norm: bool = False,
+        num_updates: int = 1,
         **kwargs,
     ):
         """
@@ -115,51 +164,59 @@ class SACTrainer(Agent):
         self.tau = tau
         self.discount = discount
 
-        observations = observation_space.sample()
-        actions = action_space.sample()
+        self.num_updates = num_updates
 
-        rng = jax.random.PRNGKey(seed)
-        rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
+        observations = observation_space.sample()[0]
+        actions = action_space.sample()[0]
 
         if np.all(action_space.low == -1) and np.all(action_space.high == 1):
             low = None
             high = None
         else:
-            low = action_space.low
-            high = action_space.high
+            low = action_space.low[0]
+            high = action_space.high[0]
 
-        actor_def = NormalTanhPolicy(
-            hidden_dims,
-            action_dim,
-            low=low,
-            high=high,
-            add_weight_norm=actor_weight_norm,
-        )
-        actor_params = actor_def.init(actor_key, observations)["params"]
-        actor = TrainState.create(
-            apply_fn=actor_def.apply,
-            params=actor_params,
-            tx=optax.adam(learning_rate=actor_lr),
-        )
+        rng = jax.random.PRNGKey(seed)
 
-        critic_def = StateActionEnsemble(
-            hidden_dims, num_qs=2, add_weight_norm=critic_weight_norm
-        )
-        critic_params = critic_def.init(critic_key, observations, actions)["params"]
-        critic = TrainState.create(
-            apply_fn=critic_def.apply,
-            params=critic_params,
-            tx=optax.adam(learning_rate=critic_lr),
-        )
-        critic_target_params = copy.deepcopy(critic_params)
+        def _make_train_states(rng):
+            actor_key, critic_key, temp_key = jax.random.split(rng, 3)
 
-        temp_def = Temperature(init_temperature)
-        temp_params = temp_def.init(temp_key)["params"]
-        temp = TrainState.create(
-            apply_fn=temp_def.apply,
-            params=temp_params,
-            tx=optax.adam(learning_rate=temp_lr),
-        )
+            actor_def = NormalTanhPolicy(
+                hidden_dims,
+                action_dim,
+                low=low,
+                high=high,
+                add_weight_norm=actor_weight_norm,
+            )
+            actor_params = actor_def.init(actor_key, observations)["params"]
+            actor = TrainState.create(
+                apply_fn=actor_def.apply,
+                params=actor_params,
+                tx=optax.adam(learning_rate=actor_lr),
+            )
+
+            critic_def = StateActionEnsemble(
+                hidden_dims, num_qs=2, add_weight_norm=critic_weight_norm
+            )
+            critic_params = critic_def.init(critic_key, observations, actions)["params"]
+            critic = TrainState.create(
+                apply_fn=critic_def.apply,
+                params=critic_params,
+                tx=optax.adam(learning_rate=critic_lr),
+            )
+            critic_target_params = copy.deepcopy(critic_params)
+
+            temp_def = Temperature(init_temperature)
+            temp_params = temp_def.init(temp_key)["params"]
+            temp = TrainState.create(
+                apply_fn=temp_def.apply,
+                params=temp_params,
+                tx=optax.adam(learning_rate=temp_lr),
+            )
+            return actor, critic, critic_target_params, temp
+
+        rngs = jax.random.split(rng, num_seeds)
+        actor, critic, critic_target_params, temp = jax.vmap(_make_train_states)(rngs)
 
         self.target_update_interval = target_update_interval
 
@@ -170,6 +227,7 @@ class SACTrainer(Agent):
         self._rng = rng
 
     def update(self, batch: FrozenDict, step) -> Dict[str, float]:
+
         (
             new_rng,
             new_actor,
@@ -177,7 +235,8 @@ class SACTrainer(Agent):
             new_critic_target_params,
             new_temp,
             info,
-        ) = _update_jit(
+        ) = _do_multiple_updates(
+            self.num_updates,
             self._rng,
             self._actor,
             self._critic,
@@ -189,7 +248,7 @@ class SACTrainer(Agent):
             self.target_entropy,
             self.backup_entropy,
             self.critic_reduction,
-            step % self.target_update_interval == 0,
+            self.target_update_interval,
         )
 
         self._rng = new_rng
@@ -207,7 +266,7 @@ class SACTrainer(Agent):
             "critic_target_params": self._critic_target_params,
             "temp": self._temp,
         }
-    
+
     def load_checkpoint(self, checkpoint):
         self._actor = checkpoint["actor"]
         self._critic = checkpoint["critic"]

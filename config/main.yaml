@@ -1,2 +1,11 @@
 defaults:
   - algo: ant
+
+algo:
+  num_seeds: 10
+
+  sac_kwargs:
+    num_seeds: ${algo.num_seeds}
+
+  model_kwargs:
+    num_seeds: ${algo.num_seeds}

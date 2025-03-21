@@ -23,7 +23,7 @@ from mbpo.utils.checkpoint import CheckpointGroup
 
 
 @hydra.main(config_path="../../config", config_name="main")
-def main(cfg):
+def main(cfg) -> None:
     cfg = cfg.algo
     if os.path.exists("wandb_id"):
         with open("wandb_id", "r") as f:
@@ -35,15 +35,21 @@ def main(cfg):
             f.write(wandb.run.id)
 
     wandb.config.update(OmegaConf.to_container(cfg=cfg))
-
-    env = gym.make(cfg.env_name)
-    env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=1)
-    term_fn = lookup_termination_fn(cfg.env_name, env)
+    dummy_env = gym.make(cfg.env_name)
+    env = gym.make_vec(
+        cfg.env_name,
+        num_envs=cfg.num_seeds,
+        vectorization_mode="sync",
+        wrappers=[gym.wrappers.RecordEpisodeStatistics],
+    )
+    print(env.spec)
+    print(env.observation_space.shape)
+    term_fn = lookup_termination_fn(cfg.env_name, dummy_env)
 
     eval_env = gym.make(cfg.env_name)
 
-    sac_kwargs = OmegaConf.to_container(cfg.sac_kwargs)
-    model_kwargs = OmegaConf.to_container(cfg.model_kwargs)
+    sac_kwargs = OmegaConf.to_container(cfg.sac_kwargs, resolve=True)
+    model_kwargs = OmegaConf.to_container(cfg.model_kwargs, resolve=True)
     agent = SACTrainer(cfg.seed, env.observation_space, env.action_space, **sac_kwargs)
     model = ModelTrainer(
         cfg.seed, env.observation_space, env.action_space, **model_kwargs
@@ -55,18 +61,21 @@ def main(cfg):
     # setup checkpoint handling
     options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
     checkpoint_manager = ocp.CheckpointManager(
-        os.path.join(os.getcwd(), 'checkpoint'), options=options)
-    
+        os.path.join(os.getcwd(), "checkpoint"), options=options
+    )
+
     step = checkpoint_manager.latest_step()
 
     if step is not None:
         print("Restoring from step", step)
         state = CheckpointGroup(
             agent=agent.get_checkpoint(),
-            model= model.get_checkpoint(),
-            buffer= replay_buffer.get_checkpoint(),
+            model=model.get_checkpoint(),
+            buffer=replay_buffer.get_checkpoint(),
         )
-        checkpoint = checkpoint_manager.restore(step, args=ocp.args.StandardRestore(state))
+        checkpoint = checkpoint_manager.restore(
+            step, args=ocp.args.StandardRestore(state)
+        )
         agent.load_checkpoint(checkpoint.agent)
         model.load_checkpoint(checkpoint.model)
         replay_buffer.load_checkpoint(checkpoint.buffer)
@@ -78,8 +87,8 @@ def main(cfg):
         if (i % cfg.save_freq) == 0:
             state = CheckpointGroup(
                 agent=agent.get_checkpoint(),
-                model= model.get_checkpoint(),
-                buffer= replay_buffer.get_checkpoint(),
+                model=model.get_checkpoint(),
+                buffer=replay_buffer.get_checkpoint(),
             )
             checkpoint_manager.save(i, args=ocp.args.StandardSave(state))
         if i < cfg.start_training:
@@ -114,9 +123,7 @@ def main(cfg):
         if i >= cfg.start_training:
             epoch = (i - cfg.start_training) // 1000
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
-                info = model.update_model(
-                    replay_buffer, agent, cfg.batch_size
-                )
+                info = model.update_model(replay_buffer, agent, cfg.batch_size)
                 depth = compute_schedule(*cfg.model_kwargs.depth_schedule, epoch)
                 prop_real = compute_schedule(
                     *cfg.model_kwargs.prop_real_schedule, epoch
@@ -128,7 +135,7 @@ def main(cfg):
                     cfg.policy_steps * cfg.model_update_interval,
                     termination_fn=term_fn,
                     depth=depth,
-                    prop_real=prop_real
+                    prop_real=prop_real,
                 )
                 wandb.log({"training/model/depth": depth}, step=i)
                 wandb.log({"training/model/prop_real": prop_real}, step=i)
@@ -170,8 +177,6 @@ def main(cfg):
             for k, v in eval_info.items():
                 wandb.log({f"evaluation/{k}": v}, step=i)
 
-            
-
 
 def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):
     """
@@ -195,15 +200,19 @@ def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, ep
         schedule_value = end_value
     else:
         schedule_value = (
-            jnp.round(
-                (end_value - init_value)
-                / (end_epoch - init_epoch)
-                * (epoch - init_epoch)
-                / increment
+            (
+                jnp.round(
+                    (end_value - init_value)
+                    / (end_epoch - init_epoch)
+                    * (epoch - init_epoch)
+                    / increment
+                )
+                * increment
+                + init_value
             )
-            * increment
-            + init_value
-        ).astype(dtype).item()
+            .astype(dtype)
+            .item()
+        )
     return schedule_value
 
 

@@ -1,5 +1,6 @@
 import flax
 
+
 @flax.struct.dataclass
 class CheckpointGroup:
     agent: flax.core.frozen_dict.FrozenDict

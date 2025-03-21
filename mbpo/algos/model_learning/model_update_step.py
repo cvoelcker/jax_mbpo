@@ -224,7 +224,7 @@ def update_vagram(
     # make sure we fit the reward accurately
     reward_sensitivity = jnp.repeat(
         jnp.ones_like(reward[:, jnp.newaxis, jnp.newaxis]), 4, 1
-    )  * jnp.mean(target_q_sensitivity)
+    ) * jnp.mean(target_q_sensitivity)
     target_q_sensitivity = jnp.concatenate(
         [target_q_sensitivity.squeeze(-2), reward_sensitivity], axis=-1
     )

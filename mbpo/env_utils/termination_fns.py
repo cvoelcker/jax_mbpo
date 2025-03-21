@@ -69,6 +69,7 @@ def get_ant(env):
         healthy_z = (z > z_range[0]) * (z < z_range[1])
 
         return jnp.logical_not(healthy_z)
+
     return term_fn
 
 
@@ -82,6 +83,7 @@ def get_humanoid(env):
         healthy_z = (z > z_range[0]) * (z < z_range[1])
 
         return jnp.logical_not(healthy_z)
+
     return term_fn
 
 

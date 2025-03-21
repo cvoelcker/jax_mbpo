@@ -1,7 +1,7 @@
 """Implementations of algorithms for continuous control."""
 
 import functools
-from typing import Dict, Sequence, Tuple, Callable, Optional
+from typing import Any, Dict, Sequence, Tuple, Callable, Optional
 
 import gymnasium as gym
 import jax
@@ -34,6 +34,7 @@ def _update_jit(
     obs_mean: jax.Array,
     obs_std: jax.Array,
     critic: TrainState,
+    critic_target_params: FrozenDict[str, Any],
     critic_target: TrainState,
     actor: TrainState,
     rng: jax.Array,
@@ -46,6 +47,7 @@ def _update_jit(
     model_inp = jnp.concatenate([state, action], axis=-1)
     obs_mean = jnp.mean(model_inp, axis=0) * 0.0001 + obs_mean * 0.9999
     obs_std = jnp.std(model_inp, axis=0) * 0.0001 + obs_std * 0.9999
+    critic_target = critic.replace(params=critic_target_params)
     if mode == "nll":
         return (
             *update_nll(model, batch, obs_mean, obs_std),
@@ -225,74 +227,55 @@ class ModelTrainer(Agent):
         patience: int = 10,
         loss_mode: str = "nll",
         deterministic: bool = False,
+        num_seeds: int = 1,
         **kwargs,
     ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
         """
-
+        self._num_seeds = num_seeds
         self._n_elites = n_elites
 
-        observations = observation_space.sample()
-        actions = action_space.sample()
+        observations = observation_space.sample()[0]
+        actions = action_space.sample()[0]
 
-        rng = jax.random.PRNGKey(seed)
-        rng, model_key = jax.random.split(rng)
+        def _init_model(rng):
+            rng, model_key = jax.random.split(rng)
 
-        if deterministic:
-            model_def = DeterministicEnsembleModel(
-                model_hidden_dims,
-                num_ensemble=n_ensemble,
-                output_dim=observations.shape[-1],
+            if deterministic:
+                model_def = DeterministicEnsembleModel(
+                    model_hidden_dims,
+                    num_ensemble=n_ensemble,
+                    output_dim=observations.shape[-1],
+                )
+            else:
+                model_def = GaussianEnsembleModel(
+                    model_hidden_dims,
+                    num_ensemble=n_ensemble,
+                    output_dim=observations.shape[-1],
+                )
+            # normalization stats
+            dummy_inp = jnp.concatenate([observations, actions], axis=-1)
+            self._obs_mean = jnp.zeros_like(dummy_inp)
+            self._obs_std = jnp.ones_like(dummy_inp)
+            model_params = model_def.init(
+                model_key, observations, actions, self._obs_mean, self._obs_std
+            )["params"]
+            model = TrainState.create(
+                apply_fn=model_def.apply,
+                params=model_params,
+                tx=optax.adamw(learning_rate=model_lr, weight_decay=5e-5),
             )
-        else:
-            model_def = GaussianEnsembleModel(
-                model_hidden_dims,
-                num_ensemble=n_ensemble,
-                output_dim=observations.shape[-1],
-            )
-        # normalization stats
-        dummy_inp = jnp.concatenate([observations, actions], axis=-1)
-        self._obs_mean = jnp.zeros_like(dummy_inp)
-        self._obs_std = jnp.ones_like(dummy_inp)
-        model_params = model_def.init(
-            model_key, observations, actions, self._obs_mean, self._obs_std
-        )["params"]
-        model = TrainState.create(
-            apply_fn=model_def.apply,
-            params=model_params,
-            tx=optax.adamw(learning_rate=model_lr, weight_decay=5e-5),
-        )
+            return model
 
-        self._model = model
+        rng, keys = jax.random.split(jax.random.PRNGKey(seed), num_seeds + 1)
+        self._model = jax.vmap(_init_model)(keys)
+
         self._models = []
         self._rng = rng
-        self._elites = jnp.arange(n_elites)
+        self._elites = jnp.repeat(jnp.arange(n_elites)[None], num_seeds, axis=0)
         self._patience = patience
         self._loss_mode = loss_mode
-
-    def update_step(self, batch: FrozenDict, policy: SACTrainer) -> Dict[str, float]:
-        critic = policy._critic
-        critic_target_params = policy._critic_target_params
-        critic_target = critic.replace(params=critic_target_params)
-        actor = policy._actor
-        (new_model, info, obs_mean, obs_std, self._rng) = _update_jit(
-            self._model,
-            batch,
-            self._obs_mean,
-            self._obs_std,
-            critic,
-            critic_target,
-            actor,
-            self._rng,
-            mode=self._loss_mode,
-        )
-
-        self._model = new_model
-        self._obs_mean = obs_mean
-        self._obs_std = obs_std
-
-        return info
 
     def yield_data(
         self,
@@ -371,7 +354,22 @@ class ModelTrainer(Agent):
         best_iter = 0
         for iters in tqdm(range(max_iters), leave=False):
             for batch in train_dataset.get_epoch_iter(batch_size):
-                info = self.update_step(batch, policy)
+                rng, keys = jax.random.split(self._rng, self._num_seeds)
+                self._model, info, self._obs_mean, self._obs_std, new_rngs = jax.jit(
+                    jax.vmap(_update_jit, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, None)),
+                    static_argnames=("mode"),
+                )(
+                    self._model,
+                    batch,
+                    self._obs_mean,
+                    self._obs_std,
+                    policy._critic,
+                    critic_target_params,
+                    critic_target,
+                    policy._actor,
+                    self._rng,
+                    mode=self._loss_mode,
+                )
             self._models.append(self._model)
             epoch_val_loss = 0.0
             val_iters = 0.0
@@ -404,7 +402,7 @@ class ModelTrainer(Agent):
         info["best_val_loss"] = self.set_best_model(val_losses)
         info["elite_loss"] = self.compute_elites(val_dataset, policy, batch_size)
         return info
-    
+
     def get_checkpoint(self):
         return {
             "model": self._model,
@@ -412,7 +410,7 @@ class ModelTrainer(Agent):
             "obs_mean": self._obs_mean,
             "obs_std": self._obs_std,
         }
-    
+
     def load_checkpoint(self, checkpoint):
         self._model = checkpoint["model"]
         self._elites = checkpoint["elites"]
