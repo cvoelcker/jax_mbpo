@@ -36,10 +36,11 @@ sac_kwargs:
   target_entropy: 
   backup_entropy: True
   critic_reduction: min
-  init_temperature: 1.0
-  critic_weight_norm: False
-  actor_weight_norm: False
+  init_temperature: 0.2
+  critic_weight_norm: True
+  actor_weight_norm: True
   target_update_interval: 4
+  update_temperature: False
 model_kwargs:
   depth_schedule: [20, 150, 1, 5, 1]
   prop_real_schedule: [00, 40, 1, 0.1, 0.1]

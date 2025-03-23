@@ -26,9 +26,7 @@ def update_nll(
         )
         state_loss = (
             -(pred_state_dist.log_prob(target_state[:, jnp.newaxis, :]))
-            .sum(axis=-1)
             .mean()
-            / state.shape[-1]
         )
 
         state_pred = pred_state_dist.mean()[:, :, :-1]
@@ -240,7 +238,6 @@ def update_vagram(
                     target_q_sensitivity[:, :, jnp.newaxis, :],
                 )
             )
-            # .sum((1, 2))
             .mean()
         )
         state_pred = pred_state_dist.mean()[:, :, :-1]

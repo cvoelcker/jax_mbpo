@@ -9,7 +9,8 @@ from mbpo.nn.mlp import MLP
 
 
 class GaussianEnsembleModel(nn.Module):
-    hidden_dims: Sequence[int]
+    hidden_dims: int
+    num_layers: int
     num_ensemble: int
     output_dim: int
     dropout_rate: Optional[float] = None
@@ -28,6 +29,7 @@ class GaussianEnsembleModel(nn.Module):
         std: jnp.ndarray,
         training: bool = False,
     ) -> distrax.Distribution:
+        layers = [self.hidden_dims] * (self.num_layers - 1)
         state = jnp.concatenate([observations, action], axis=-1)
         if len(state.shape) < 2 or state.shape[-2] != self.num_ensemble:
             state = jnp.expand_dims(state, axis=-2).repeat(self.num_ensemble, axis=-2)
@@ -40,9 +42,9 @@ class GaussianEnsembleModel(nn.Module):
             out_axes=-2,
             axis_size=self.num_ensemble,
         )(
-            self.hidden_dims,
+            layers,
             activations=nn.silu,
-            activate_final=False,
+            activate_final=True,
             dropout_rate=self.dropout_rate,
             add_weight_norm=self.add_weight_norm,
         )(
@@ -63,7 +65,6 @@ class GaussianEnsembleModel(nn.Module):
 
         logvar = nn.Dense(self.output_dim + 1)(outputs)
 
-        logvar = jnp.clip(logvar, self.log_std_min, self.log_std_max)
         logvar = self.log_std_max - nn.softplus(self.log_std_max - logvar)
         logvar = self.log_std_min + nn.softplus(logvar - self.log_std_min)
 

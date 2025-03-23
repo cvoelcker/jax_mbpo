@@ -218,7 +218,8 @@ class ModelTrainer(Agent):
         observation_space: gym.Space,
         action_space: gym.Space,
         model_lr: float = 3e-4,
-        model_hidden_dims: Sequence[int] = (256, 256),
+        model_hidden_dims: int = 200,
+        model_num_layers: int = 4,
         model_weight_norm: bool = False,
         n_ensemble: int = 8,
         n_elites: int = 5,
@@ -242,14 +243,16 @@ class ModelTrainer(Agent):
         if deterministic:
             model_def = DeterministicEnsembleModel(
                 model_hidden_dims,
-                num_ensemble=n_ensemble,
-                output_dim=observations.shape[-1],
+                model_num_layers,
+                n_ensemble,
+                observations.shape[-1],
             )
         else:
             model_def = GaussianEnsembleModel(
                 model_hidden_dims,
-                num_ensemble=n_ensemble,
-                output_dim=observations.shape[-1],
+                model_num_layers,
+                n_ensemble,
+                observations.shape[-1],
             )
         # normalization stats
         dummy_inp = jnp.concatenate([observations, actions], axis=-1)

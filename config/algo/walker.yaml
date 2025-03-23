@@ -36,18 +36,20 @@ sac_kwargs:
   target_entropy: 
   backup_entropy: True
   critic_reduction: min
-  init_temperature: 1.0
-  critic_weight_norm: False
-  actor_weight_norm: False
+  init_temperature: 0.2
+  critic_weight_norm: True
+  actor_weight_norm: True
   target_update_interval: 4
+  update_temperature: False
 model_kwargs:
   depth_schedule: [20, 20, 1, 1, 1]
   prop_real_schedule: [0, 20, 1, 0.1, 0.1]
   n_ensemble: 7
   n_elites: 5
   patience: 25
-  model_hidden_dims: [200, 200, 200, 200]
-  model_lr: 1e-4
+  model_hidden_dims: 200
+  model_layers: 4
+  model_lr: 1e-3
   model_weight_norm: False
   deterministic: True
   loss_mode: nll

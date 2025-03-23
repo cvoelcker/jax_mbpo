@@ -18,7 +18,8 @@ class MSEDeterministic(distrax.Deterministic):
 
 
 class DeterministicEnsembleModel(nn.Module):
-    hidden_dims: Sequence[int]
+    hidden_dims: int
+    num_layers: int
     num_ensemble: int
     output_dim: int
     dropout_rate: Optional[float] = None
@@ -37,6 +38,7 @@ class DeterministicEnsembleModel(nn.Module):
         std: jnp.ndarray,
         training: bool = False,
     ) -> distrax.Distribution:
+        layers = [self.hidden_dims] * (self.num_layers - 1)
         state = jnp.concatenate([observations, action], axis=-1)
         if len(state.shape) < 2 or state.shape[-2] != self.num_ensemble:
             state = jnp.expand_dims(state, axis=-2).repeat(self.num_ensemble, axis=-2)
@@ -49,9 +51,9 @@ class DeterministicEnsembleModel(nn.Module):
             out_axes=-2,
             axis_size=self.num_ensemble,
         )(
-            self.hidden_dims,
+            layers,
             activations=nn.silu,
-            activate_final=False,
+            activate_final=True,
             dropout_rate=self.dropout_rate,
             add_weight_norm=self.add_weight_norm,
         )(

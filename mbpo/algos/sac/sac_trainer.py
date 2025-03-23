@@ -24,7 +24,7 @@ from mbpo.utils.target_update import soft_target_update
 
 
 @functools.partial(
-    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target")
+    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target", "update_temperature")
 )
 def _update_jit(
     rng: PRNGKey,
@@ -39,6 +39,7 @@ def _update_jit(
     backup_entropy: bool,
     critic_reduction: str,
     update_target: bool,
+    update_temperature: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
 
     rng, key = jax.random.split(rng)
@@ -63,9 +64,13 @@ def _update_jit(
 
     rng, key = jax.random.split(rng)
     new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch)
-    new_temp, alpha_info = update_temperature(
-        temp, actor_info["entropy"], target_entropy
-    )
+    if update_temperature:
+        new_temp, alpha_info = update_temperature(
+            temp, actor_info["entropy"], target_entropy
+        )
+    else:
+        new_temp = temp
+        alpha_info = {}
 
     return (
         rng,
@@ -96,6 +101,7 @@ class SACTrainer(Agent):
         target_update_interval: int = 1,
         critic_weight_norm: bool = False,
         actor_weight_norm: bool = False,
+        update_temperature: bool = True,
         **kwargs,
     ):
         """
@@ -114,6 +120,8 @@ class SACTrainer(Agent):
 
         self.tau = tau
         self.discount = discount
+
+        self.update_temperature = update_temperature
 
         observations = observation_space.sample()
         actions = action_space.sample()
@@ -190,6 +198,7 @@ class SACTrainer(Agent):
             self.backup_entropy,
             self.critic_reduction,
             step % self.target_update_interval == 0,
+            self.update_temperature,
         )
 
         self._rng = new_rng

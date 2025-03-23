@@ -3,43 +3,42 @@ import hydra
 
 
 @hydra.main(config_path="../../config", config_name="main", version_base=None)
-def main(cfg):              
+def main(cfg):
     print("Guarded imports after this")
 
-    import sys                 
-    import traceback                                                 
-                           
+    import sys
+    import traceback
+
     # This main is used to circumvent a bug in Hydra
     # See https://github.com/facebookresearch/hydra/issues/2664
-                       
-    try:             
-        run(cfg)              
+
+    try:
+        run(cfg)
     except Exception:
         traceback.print_exc(file=sys.stderr)
-    finally:      
-        # fflush everything     
+    finally:
+        # fflush everything
         sys.stdout.flush()
-        sys.stderr.flush()                
-                                                      
+        sys.stderr.flush()
 
 
 def run(cfg):
     # imports are placed here to prevent interference with hydra
     import copy
     import os
-    
+
     import gymnasium as gym
     import jax
     import tqdm
     import wandb
-    
+
     from omegaconf import OmegaConf
-    
+
     import jax.numpy as jnp
     from flax.training import orbax_utils
     import orbax
     import orbax.checkpoint as ocp
-    
+
     from mbpo.algos.model_learning.model_trainer import ModelTrainer
     from mbpo.algos.sac.sac_trainer import SACTrainer
     from mbpo.data import ReplayBuffer
@@ -48,13 +47,14 @@ def run(cfg):
     from mbpo.env_utils.termination_fns import lookup_termination_fn
     from mbpo.utils.checkpoint import CheckpointGroup
 
-
-    def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):
+    def compute_schedule(
+        init_epoch, end_epoch, init_value, end_value, increment, epoch
+    ):
         """
         Compute a schedule that linearly interpolates between init_value and end_value.
         The schedule is incremented discretely by increment to allow for integer values
         and to be used with jax.jit static argnames.
-    
+
         Args:
             init_epoch (int): The epoch at which the schedule starts
             end_epoch (int): The epoch at which the schedule ends
@@ -87,7 +87,6 @@ def run(cfg):
             )
         return schedule_value
 
-
     if cfg.checkpoint_setup == "cluster":
         os.chdir(f"/checkpoint/voelcker/{os.getenv("SLURM_JOB_ID")}")
         os.environ["TQDM_DISABLE"] = "True"
@@ -107,11 +106,14 @@ def run(cfg):
     env = gym.make(cfg.env_name)
     eval_env = gym.make(cfg.env_name)
     if cfg.env_distractions:
-        env = distracting_obs_wrapper.DistractingObsWrapper(env, **cfg.distraction_kwargs)
-        eval_env = distracting_obs_wrapper.DistractingObsWrapper(eval_env, **cfg.distraction_kwargs)
+        env = distracting_obs_wrapper.DistractingObsWrapper(
+            env, **cfg.distraction_kwargs
+        )
+        eval_env = distracting_obs_wrapper.DistractingObsWrapper(
+            eval_env, **cfg.distraction_kwargs
+        )
     env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=1)
     term_fn = lookup_termination_fn(cfg.env_name, env)
-
 
     sac_kwargs = OmegaConf.to_container(cfg.sac_kwargs)
     model_kwargs = OmegaConf.to_container(cfg.model_kwargs)
