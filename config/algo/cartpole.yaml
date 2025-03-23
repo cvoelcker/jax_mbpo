@@ -1,4 +1,4 @@
-env_name: Cartpole-v5
+env_name: CartPole-v5
 env_distractions: False
 distraction_kwargs:
   num_distractions: 0
@@ -37,8 +37,8 @@ sac_kwargs:
   backup_entropy: True
   critic_reduction: min
   init_temperature: 1.0
-  critic_weight_norm: True
-  actor_weight_norm: True
+  critic_weight_norm: False
+  actor_weight_norm: False
   target_update_interval: 4
 model_kwargs:
   depth_schedule: [20, 20, 1, 1, 1]
