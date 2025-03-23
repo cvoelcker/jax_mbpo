@@ -12,12 +12,13 @@ def get_hopper(env):
     z_range = env.unwrapped._healthy_z_range
     angle_range = env.unwrapped._healthy_angle_range
     state_range = env.unwrapped._healthy_state_range
+    obs_length = env.unwrapped.observation_space.shape[-1]
 
     @jax.jit
     def term_fn(next_obs: jax.Array) -> jax.Array:
         z = next_obs[:, 0]
         angle = next_obs[:, 1]
-        state = next_obs[:, 2:]
+        state = next_obs[:, 2:obs_length]
 
         healthy_z = (z > z_range[0]) * (z < z_range[1])
         healthy_angle = (angle > angle_range[0]) * (angle < angle_range[1])

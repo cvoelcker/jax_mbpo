@@ -1,32 +1,95 @@
 #! /usr/bin/env pythonA
-import copy
-import os
-
-import gymnasium as gym
-import jax
-import tqdm
-import wandb
 import hydra
-from omegaconf import OmegaConf
-
-import jax.numpy as jnp
-from flax.training import orbax_utils
-import orbax
-import orbax.checkpoint as ocp
-
-from mbpo.algos.model_learning.model_trainer import ModelTrainer
-from mbpo.algos.sac.sac_trainer import SACTrainer
-from mbpo.data import ReplayBuffer
-from mbpo.env_utils import distracting_obs_wrapper
-from mbpo.evaluation import evaluate
-from mbpo.env_utils.termination_fns import lookup_termination_fn
-from mbpo.utils.checkpoint import CheckpointGroup
 
 
-@hydra.main(config_path="../../config", config_name="main")
-def main(cfg):
+@hydra.main(config_path="../../config", config_name="main", version_base=None)
+def main(cfg):              
+    print("Guarded imports after this")
+
+    import sys                 
+    import traceback                                                 
+                           
+    # This main is used to circumvent a bug in Hydra
+    # See https://github.com/facebookresearch/hydra/issues/2664
+                       
+    try:             
+        run(cfg)              
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+    finally:      
+        # fflush everything     
+        sys.stdout.flush()
+        sys.stderr.flush()                
+                                                      
+
+
+def run(cfg):
+    # imports are placed here to prevent interference with hydra
+    import copy
+    import os
+    
+    import gymnasium as gym
+    import jax
+    import tqdm
+    import wandb
+    
+    from omegaconf import OmegaConf
+    
+    import jax.numpy as jnp
+    from flax.training import orbax_utils
+    import orbax
+    import orbax.checkpoint as ocp
+    
+    from mbpo.algos.model_learning.model_trainer import ModelTrainer
+    from mbpo.algos.sac.sac_trainer import SACTrainer
+    from mbpo.data import ReplayBuffer
+    from mbpo.env_utils import distracting_obs_wrapper
+    from mbpo.evaluation import evaluate
+    from mbpo.env_utils.termination_fns import lookup_termination_fn
+    from mbpo.utils.checkpoint import CheckpointGroup
+
+
+    def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):
+        """
+        Compute a schedule that linearly interpolates between init_value and end_value.
+        The schedule is incremented discretely by increment to allow for integer values
+        and to be used with jax.jit static argnames.
+    
+        Args:
+            init_epoch (int): The epoch at which the schedule starts
+            end_epoch (int): The epoch at which the schedule ends
+            init_value (float): The value at init_epoch
+            end_value (float): The value at end_epoch
+            increment (int): The increment of the schedule
+            epoch (int): The current epoch
+        """
+        dtype = jnp.array([increment]).dtype
+        if init_value == end_value:
+            return jnp.array([end_value], dtype=dtype).item()
+        if epoch < init_epoch:
+            schedule_value = init_value
+        elif epoch > end_epoch:
+            schedule_value = end_value
+        else:
+            schedule_value = (
+                (
+                    jnp.round(
+                        (end_value - init_value)
+                        / (end_epoch - init_epoch)
+                        * (epoch - init_epoch)
+                        / increment
+                    )
+                    * increment
+                    + init_value
+                )
+                .astype(dtype)
+                .item()
+            )
+        return schedule_value
+
+
     if cfg.checkpoint_setup == "cluster":
-        os.chdir(f"/cehckpoint/voelcker/{os.getenv("SLURM_JOB_ID")}")
+        os.chdir(f"/checkpoint/voelcker/{os.getenv("SLURM_JOB_ID")}")
         os.environ["TQDM_DISABLE"] = "True"
 
     cfg = cfg.algo
@@ -178,44 +241,6 @@ def main(cfg):
             eval_info = evaluate(agent, eval_env, num_episodes=cfg.eval_episodes)
             for k, v in eval_info.items():
                 wandb.log({f"evaluation/{k}": v}, step=i)
-
-
-def compute_schedule(init_epoch, end_epoch, init_value, end_value, increment, epoch):
-    """
-    Compute a schedule that linearly interpolates between init_value and end_value.
-    The schedule is incremented discretely by increment to allow for integer values
-    and to be used with jax.jit static argnames.
-
-    Args:
-        init_epoch (int): The epoch at which the schedule starts
-        end_epoch (int): The epoch at which the schedule ends
-        init_value (float): The value at init_epoch
-        end_value (float): The value at end_epoch
-        increment (int): The increment of the schedule
-        epoch (int): The current epoch
-    """
-    dtype = jnp.array([increment]).dtype
-
-    if epoch < init_epoch:
-        schedule_value = init_value
-    elif epoch > end_epoch:
-        schedule_value = end_value
-    else:
-        schedule_value = (
-            (
-                jnp.round(
-                    (end_value - init_value)
-                    / (end_epoch - init_epoch)
-                    * (epoch - init_epoch)
-                    / increment
-                )
-                * increment
-                + init_value
-            )
-            .astype(dtype)
-            .item()
-        )
-    return schedule_value
 
 
 if __name__ == "__main__":
