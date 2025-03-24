@@ -47,7 +47,8 @@ model_kwargs:
   n_ensemble: 7
   n_elites: 5
   patience: 10
-  model_hidden_dims: [200, 200, 200, 200]
+  model_hidden_dims: 200
+  model_num_layers: 4
   model_lr: 1e-4
   model_weight_norm: False
   deterministic: True

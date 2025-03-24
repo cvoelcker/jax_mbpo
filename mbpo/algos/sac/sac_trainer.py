@@ -39,7 +39,7 @@ def _update_jit(
     backup_entropy: bool,
     critic_reduction: str,
     update_target: bool,
-    update_temperature: bool,
+    _update_temperature: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
 
     rng, key = jax.random.split(rng)
@@ -64,7 +64,7 @@ def _update_jit(
 
     rng, key = jax.random.split(rng)
     new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch)
-    if update_temperature:
+    if _update_temperature:
         new_temp, alpha_info = update_temperature(
             temp, actor_info["entropy"], target_entropy
         )
