@@ -10,6 +10,7 @@ import optax
 from flax.core.frozen_dict import FrozenDict
 from flax.core import frozen_dict
 from flax.training.train_state import TrainState
+import flax.linen as nn
 from tqdm import tqdm
 
 from mbpo.algos.agent import Agent
@@ -226,7 +227,6 @@ class ModelTrainer(Agent):
         patience: int = 10,
         loss_mode: str = "nll",
         deterministic: bool = False,
-        **kwargs,
     ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -266,6 +266,8 @@ class ModelTrainer(Agent):
             params=model_params,
             tx=optax.adamw(learning_rate=model_lr, weight_decay=5e-5),
         )
+        # tabulate_fn = nn.tabulate(model_def, jax.random.PRNGKey(0))
+        # print(tabulate_fn(observations, actions, self._obs_mean, self._obs_std))
 
         self._model = model
         self._models = []

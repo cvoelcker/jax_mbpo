@@ -24,7 +24,7 @@ from mbpo.utils.target_update import soft_target_update
 
 
 @functools.partial(
-    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target", "update_temperature")
+    jax.jit, static_argnames=("backup_entropy", "critic_reduction", "update_target", "_update_temperature")
 )
 def _update_jit(
     rng: PRNGKey,
@@ -102,7 +102,6 @@ class SACTrainer(Agent):
         critic_weight_norm: bool = False,
         actor_weight_norm: bool = False,
         update_temperature: bool = True,
-        **kwargs,
     ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905

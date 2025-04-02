@@ -191,9 +191,9 @@ def run(cfg):
             epoch = (i - cfg.start_training) // 1000
             if (i - cfg.start_training) % cfg.model_update_interval == 0:
                 info = model.update_model(replay_buffer, agent, cfg.batch_size)
-                depth = compute_schedule(*cfg.model_kwargs.depth_schedule, epoch)
+                depth = compute_schedule(*cfg.model_use_kwargs.depth_schedule, epoch)
                 prop_real = compute_schedule(
-                    *cfg.model_kwargs.prop_real_schedule, epoch
+                    *cfg.model_use_kwargs.prop_real_schedule, epoch
                 )
                 model_dataset = model.yield_data(
                     copy.deepcopy(replay_buffer),
