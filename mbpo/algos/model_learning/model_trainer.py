@@ -147,17 +147,10 @@ def compute_model_based_batch(
     n_elites = elites.shape[0]
     bs = batch["observations"].shape[0]
 
-    _states = []
-    _actions = []
-    _next_states = []
-    _rewards = []
-    _dones = []
-
     state = batch["observations"]
 
-    _states.append(state)
-
-    for i in range(depth):
+    def _step_fn(carry, inp):
+        rng, state = carry
         (
             rng,
             action_rng,
@@ -179,17 +172,16 @@ def compute_model_based_batch(
             state_ensemble[..., -1:], elite_idxs[:, None, None], axis=-2
         ).squeeze(-2)
         done = terminal_fn(state)[..., jnp.newaxis]
-        _states.append(state)
-        _actions.append(action)
-        _rewards.append(reward)
-        _dones.append(done)
-        _next_states.append(state)
+        return (rng, state), (state, action, reward, done)
 
-    states = jnp.stack(_states, axis=0)
-    actions = jnp.stack(_actions, axis=0)
-    next_states = jnp.stack(_next_states, axis=0)
-    rewards = jnp.stack(_rewards, axis=0)
-    dones = jnp.stack(_dones, axis=0)
+    _, (next_states, actions, rewards, dones) = jax.lax.scan(
+        _step_fn,
+        (rng, state),
+        jnp.arange(depth),
+        length=depth,
+    )
+
+    states = jnp.concatenate([state.reshape(1, bs, -1), next_states[:-1]], axis=0)
     dones = jnp.clip(jnp.cumsum(dones, axis=0), 0.0, 1.0)
 
     idxs = jax.random.randint(rng, (1, bs, 1), 0, len(states) - depth)

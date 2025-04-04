@@ -100,10 +100,16 @@ class Dataset(object):
 
         return frozen_dict.freeze(batch)
 
-    def get_epoch_iter(self, batch_size: int):
+    def get_epoch_iter(self, batch_size: int, max_samples: int = 100_000):
         total_len = len(self)
-        num_batches = total_len // batch_size
-        random_idxs = np.random.permutation(total_len)
+        num_batches = min(total_len, max_samples) // batch_size
+        if max_samples < total_len:
+            random_recent = np.random.permutation(total_len)[-max_samples//2:]
+            random_any = np.random.permutation(total_len)[:-max_samples//2]
+            random_idxs = np.concatenate((random_recent, random_any))
+            random_idxs = np.random.permutation(random_idxs)
+        else:
+            random_idxs = np.random.permutation(total_len)
         for i in range(num_batches):
             idxs = random_idxs[i * batch_size : (i + 1) * batch_size]
             yield self.sample(batch_size, indx=idxs)

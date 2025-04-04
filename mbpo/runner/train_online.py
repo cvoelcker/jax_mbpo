@@ -26,6 +26,7 @@ def run(cfg):
     # imports are placed here to prevent interference with hydra
     import copy
     import os
+    from numbers import Number
 
     import gymnasium as gym
     import jax
@@ -48,7 +49,7 @@ def run(cfg):
     from mbpo.utils.checkpoint import CheckpointGroup
 
     def compute_schedule(
-        init_epoch, end_epoch, init_value, end_value, increment, epoch
+        init_epoch: int, end_epoch: int, init_value: Number, end_value: Number, increment: Number, epoch: int
     ):
         """
         Compute a schedule that linearly interpolates between init_value and end_value.
@@ -58,9 +59,9 @@ def run(cfg):
         Args:
             init_epoch (int): The epoch at which the schedule starts
             end_epoch (int): The epoch at which the schedule ends
-            init_value (float): The value at init_epoch
-            end_value (float): The value at end_epoch
-            increment (int): The increment of the schedule
+            init_value (Number): The value at init_epoch
+            end_value (Number): The value at end_epoch
+            increment (Number): The increment of the schedule
             epoch (int): The current epoch
         """
         dtype = jnp.array([increment]).dtype

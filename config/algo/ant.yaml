@@ -2,3 +2,6 @@ defaults:
   - base
 
 env_name: Ant-v4
+
+model_use_kwargs:
+  depth_schedule: [20, 100, 1, 25, 1]

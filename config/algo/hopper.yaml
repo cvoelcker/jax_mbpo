@@ -2,3 +2,6 @@ defaults:
   - base
 
 env_name: Hopper-v5
+
+model_use_kwargs:
+  depth_schedule: [20, 100, 1, 15, 1]
