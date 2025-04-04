@@ -1,4 +1,4 @@
 defaults:
   - base
 
-env_name: Cheetah-v5
+env_name: HalfCheetah-v5

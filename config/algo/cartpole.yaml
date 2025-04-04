@@ -1,4 +1,4 @@
 defaults:
   - base
 
-env_name: CartPole-v5
+env_name: Cartpole-v5

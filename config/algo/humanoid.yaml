@@ -5,3 +5,6 @@ env_name: Humanoid-v5
 
 model_use_kwargs:
   depth_schedule: [20, 300, 1, 25, 1]
+model_kwargs:
+  model_hidden_dims: 400
+  model_lr: 1e-4
